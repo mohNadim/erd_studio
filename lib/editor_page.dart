@@ -12,6 +12,7 @@ import 'dialogs.dart';
 import 'erd_controller.dart';
 import 'erd_painter.dart';
 import 'export.dart';
+import 'layout.dart';
 import 'source_edit.dart';
 
 const kSample = r'''
@@ -76,6 +77,8 @@ class _EditorPageState extends State<EditorPage> {
   Offset? _mStart;
   Set<String> _mBase = {};
   double _tpScale = 1;
+  bool _pointerMoved = false;
+  bool _primaryPointerDown = false;
 
   @override
   void initState() {
@@ -106,25 +109,30 @@ class _EditorPageState extends State<EditorPage> {
     if (mounted) setState(() {});
   }
 
-  ErdPalette get pal =>
-      Theme.of(context).brightness == Brightness.dark ? ErdPalette.darkPal : ErdPalette.light;
+  ErdPalette get pal => Theme.of(context).brightness == Brightness.dark
+      ? ErdPalette.darkPal
+      : ErdPalette.light;
 
   void _changed(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 250), () => c.update(text.text));
+    _debounce =
+        Timer(const Duration(milliseconds: 250), () => c.update(text.text));
   }
 
   void _toast(String m) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 4)));
+      ..showSnackBar(
+          SnackBar(content: Text(m), duration: const Duration(seconds: 4)));
   }
 
   // ─────────────────────────────── files ───────────────────────────────
 
   String _downloads(String name) {
-    final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '.';
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '.';
     final dir = Directory('$home${Platform.pathSeparator}Downloads');
     return '${dir.existsSync() ? dir.path : home}${Platform.pathSeparator}$name';
   }
@@ -170,23 +178,31 @@ class _EditorPageState extends State<EditorPage> {
     final opt = await showDialog<ExportOptions>(
         context: context, builder: (_) => ExportDialog(c: c));
     if (opt == null) return;
+    final extension = opt.format == ExportFormat.pdf ? 'pdf' : 'png';
     String? path;
     try {
       path = await FilePicker.platform.saveFile(
           dialogTitle: 'Export diagram',
-          fileName: 'erd.png',
+          fileName: 'erd.$extension',
           type: FileType.custom,
-          allowedExtensions: ['png']);
+          allowedExtensions: [extension]);
     } catch (e) {
-      path = _downloads('erd.png');
+      path = _downloads('erd.$extension');
       _toast('Save dialog unavailable ($e). Saving to $path');
     }
     if (path == null) return; // user cancelled
-    if (!path.toLowerCase().endsWith('.png')) path = '$path.png';
+    if (!path.toLowerCase().endsWith('.$extension')) {
+      path = '$path.$extension';
+    }
     try {
-      final bytes =
-          await renderErdPng(c, palette, scale: opt.scale, transparent: opt.transparent);
-      await File(path).writeAsBytes(bytes);
+      final bytes = opt.format == ExportFormat.pdf
+          ? await renderErdPdf(c, palette,
+              scale: opt.scale, transparent: opt.transparent)
+          : await renderErdPng(c, palette,
+              scale: opt.scale, transparent: opt.transparent);
+      final file = File(path);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes, flush: true);
       _toast('Exported → $path');
     } catch (e) {
       _toast('Export failed: $e');
@@ -198,13 +214,17 @@ class _EditorPageState extends State<EditorPage> {
   Future<void> _pickColor() async {
     if (c.selection.isEmpty) return;
     final r = await showDialog<ColorChoice>(
-        context: context, builder: (_) => ColorDialog(count: c.selection.length));
+        context: context,
+        builder: (_) => ColorDialog(count: c.selection.length));
     if (r == null) return;
     final src = setTableHeaderColor(
         text.text, Set.of(c.selection), r.reset ? null : colorToHex(r.color!));
-    final off = text.selection.isValid ? math.min(text.selection.baseOffset, src.length) : 0;
+    final off = text.selection.isValid
+        ? math.min(text.selection.baseOffset, src.length)
+        : 0;
     text.value = TextEditingValue(
-        text: src, selection: TextSelection.collapsed(offset: math.max(0, off)));
+        text: src,
+        selection: TextSelection.collapsed(offset: math.max(0, off)));
     c.update(src);
   }
 
@@ -235,6 +255,7 @@ class _EditorPageState extends State<EditorPage> {
       HardwareKeyboard.instance.isShiftPressed;
 
   void _down(PointerDownEvent e) {
+    _primaryPointerDown = false;
     canvasFocus.requestFocus();
     final w = c.screenToWorld(e.localPosition);
     if (e.buttons & kSecondaryMouseButton != 0) {
@@ -250,6 +271,8 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
     if (e.buttons & kPrimaryButton == 0) return;
+    _primaryPointerDown = true;
+    _pointerMoved = false;
     final n = c.hit(w);
     if (n != null) {
       if (_additive) {
@@ -271,13 +294,16 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   void _move(PointerMoveEvent e) {
+    if (e.delta.distance > 1) _pointerMoved = true;
     switch (_drag) {
       case _Drag.tables:
         c.moveSelected(e.delta / c.scale); // exactly follows the cursor
       case _Drag.pan:
         c.panBy(e.delta);
       case _Drag.marquee:
-        c.setMarquee(Rect.fromPoints(_mStart!, c.screenToWorld(e.localPosition)), _mBase);
+        c.setMarquee(
+            Rect.fromPoints(_mStart!, c.screenToWorld(e.localPosition)),
+            _mBase);
       case _Drag.none:
         break;
     }
@@ -285,7 +311,69 @@ class _EditorPageState extends State<EditorPage> {
 
   void _up(PointerEvent e) {
     if (_drag == _Drag.marquee) c.setMarquee(null, _mBase);
+    if (_primaryPointerDown &&
+        !_pointerMoved &&
+        e is PointerUpEvent &&
+        e.buttons == 0) {
+      _renameAt(c.screenToWorld(e.localPosition));
+    }
+    _primaryPointerDown = false;
     _drag = _Drag.none;
+  }
+
+  Future<void> _renameAt(Offset world) async {
+    final tableName = c.hit(world);
+    if (tableName == null) return;
+    final table = c.byName[tableName];
+    final rect = c.tableRect(tableName);
+    if (table == null || rect == null) return;
+    final localY = world.dy - rect.top;
+    String? oldName;
+    String? tableForColumn;
+    if (localY >= 0 && localY < ErdMetrics.headerH) {
+      oldName = tableName;
+    } else if (localY >= ErdMetrics.headerH) {
+      final index = ((localY - ErdMetrics.headerH) / ErdMetrics.rowH).floor();
+      if (index >= 0 && index < table.columns.length) {
+        oldName = table.columns[index].name;
+        tableForColumn = tableName;
+      }
+    }
+    if (oldName == null) return;
+    final controller = TextEditingController(text: oldName);
+    final renamed = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tableForColumn == null ? 'Rename table' : 'Rename field'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Rename')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || renamed == null) return;
+    final newName = renamed.trim();
+    if (newName.isEmpty || newName == oldName) return;
+    final updated = tableForColumn == null
+        ? renameDbmlTable(text.text, oldName, newName)
+        : renameDbmlColumn(text.text, tableForColumn, oldName, newName);
+    text.value = TextEditingValue(
+        text: updated,
+        selection: TextSelection.collapsed(offset: updated.length));
+    c.pos.clear();
+    c.needsFit = true;
+    c.update(updated);
   }
 
   void _signal(PointerSignalEvent e) {
@@ -317,7 +405,9 @@ class _EditorPageState extends State<EditorPage> {
       final top = vScroll.offset;
       if (target < top || target > top + _editorVH - 3 * kLineHeight) {
         vScroll.animateTo(
-          (target - _editorVH / 3).clamp(0.0, vScroll.position.maxScrollExtent).toDouble(),
+          (target - _editorVH / 3)
+              .clamp(0.0, vScroll.position.maxScrollExtent)
+              .toDouble(),
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
         );
@@ -332,8 +422,8 @@ class _EditorPageState extends State<EditorPage> {
         cursor: SystemMouseCursors.resizeRow,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onVerticalDragUpdate: (d) => setState(() =>
-              _problemsH = (_problemsH - d.delta.dy).clamp(80.0, 420.0).toDouble()),
+          onVerticalDragUpdate: (d) => setState(() => _problemsH =
+              (_problemsH - d.delta.dy).clamp(80.0, 420.0).toDouble()),
           child: Container(height: 6, color: cs.outlineVariant.withAlpha(120)),
         ),
       ),
@@ -345,10 +435,8 @@ class _EditorPageState extends State<EditorPage> {
             padding: const EdgeInsets.fromLTRB(12, 4, 4, 0),
             child: Row(children: [
               Text('PROBLEMS  ${issues.length}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .labelMedium
-                      ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: .6)),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700, letterSpacing: .6)),
               const Spacer(),
               IconButton(
                 tooltip: 'Close',
@@ -370,16 +458,25 @@ class _EditorPageState extends State<EditorPage> {
                       return InkWell(
                         onTap: () => _goTo(it),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Icon(Icons.error_outline, size: 16, color: cs.error),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(it.message, style: const TextStyle(fontSize: 12.5))),
-                            const SizedBox(width: 8),
-                            if (it.line > 0)
-                              Text('[${it.line}:${it.column}]',
-                                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                          ]),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 5),
+                          child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.error_outline,
+                                    size: 16, color: cs.error),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                    child: Text(it.message,
+                                        style:
+                                            const TextStyle(fontSize: 12.5))),
+                                const SizedBox(width: 8),
+                                if (it.line > 0)
+                                  Text('[${it.line}:${it.column}]',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: cs.onSurfaceVariant)),
+                              ]),
                         ),
                       );
                     },
@@ -407,7 +504,8 @@ class _EditorPageState extends State<EditorPage> {
                 Text(n > 0 ? '$n problem${n == 1 ? '' : 's'}' : 'No problems',
                     style: const TextStyle(fontSize: 12)),
                 const Spacer(),
-                Text('${c.schema.tables.length} tables · ${c.schema.refs.length} relations',
+                Text(
+                    '${c.schema.tables.length} tables · ${c.schema.refs.length} relations',
                     style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               ]),
             ),
@@ -425,16 +523,31 @@ class _EditorPageState extends State<EditorPage> {
       appBar: AppBar(
         title: const Text('DBML ERD Studio'),
         actions: [
-          IconButton(tooltip: 'Open .dbml', icon: const Icon(Icons.folder_open), onPressed: _open),
-          IconButton(tooltip: 'Save .dbml', icon: const Icon(Icons.save_outlined), onPressed: _saveDbml),
-          IconButton(tooltip: 'Export PNG…', icon: const Icon(Icons.image_outlined), onPressed: _export),
+          IconButton(
+              tooltip: 'Open .dbml',
+              icon: const Icon(Icons.folder_open),
+              onPressed: _open),
+          IconButton(
+              tooltip: 'Save .dbml',
+              icon: const Icon(Icons.save_outlined),
+              onPressed: _saveDbml),
+          IconButton(
+              tooltip: 'Export diagram…',
+              icon: const Icon(Icons.file_download_outlined),
+              onPressed: _export),
           const SizedBox(width: 6),
           IconButton(
               tooltip: 'Auto layout',
               icon: const Icon(Icons.auto_awesome_mosaic_outlined),
               onPressed: c.relayout),
-          IconButton(tooltip: 'Fit to screen', icon: const Icon(Icons.fit_screen), onPressed: c.fit),
-          IconButton(tooltip: 'Select all tables (Ctrl+A)', icon: const Icon(Icons.select_all), onPressed: c.selectAll),
+          IconButton(
+              tooltip: 'Fit to screen',
+              icon: const Icon(Icons.fit_screen),
+              onPressed: c.fit),
+          IconButton(
+              tooltip: 'Select all tables (Ctrl+A)',
+              icon: const Icon(Icons.select_all),
+              onPressed: c.selectAll),
           ListenableBuilder(
             listenable: c,
             builder: (_, __) => IconButton(
@@ -475,8 +588,8 @@ class _EditorPageState extends State<EditorPage> {
           cursor: SystemMouseCursors.resizeColumn,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: (d) => setState(() =>
-                _editorW = (_editorW + d.delta.dx).clamp(240.0, maxEditor).toDouble()),
+            onHorizontalDragUpdate: (d) => setState(() => _editorW =
+                (_editorW + d.delta.dx).clamp(240.0, maxEditor).toDouble()),
             child: Container(width: 7, color: cs.outlineVariant.withAlpha(120)),
           ),
         ),
@@ -498,8 +611,10 @@ class _EditorPageState extends State<EditorPage> {
       }
       return CallbackShortcuts(
         bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyA, control: true): c.selectAll,
-          const SingleActivator(LogicalKeyboardKey.keyA, meta: true): c.selectAll,
+          const SingleActivator(LogicalKeyboardKey.keyA, control: true):
+              c.selectAll,
+          const SingleActivator(LogicalKeyboardKey.keyA, meta: true):
+              c.selectAll,
           const SingleActivator(LogicalKeyboardKey.escape): c.clearSelection,
         },
         child: Focus(
@@ -533,7 +648,10 @@ class _EditorPageState extends State<EditorPage> {
                     'Shift+drag: box select · Right-click: color',
                     style: TextStyle(
                         fontSize: 11,
-                        color: Theme.of(ctx).colorScheme.onSurfaceVariant.withAlpha(170)),
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurfaceVariant
+                            .withAlpha(170)),
                   ),
                 ),
               ),
