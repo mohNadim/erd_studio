@@ -3,7 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dbml_service.dart' show DbmlIssue;
 
-const kMonoFonts = <String>['Consolas', 'Menlo', 'DejaVu Sans Mono', 'Courier New', 'monospace'];
+const kMonoFonts = <String>[
+  'Consolas',
+  'Menlo',
+  'DejaVu Sans Mono',
+  'Courier New',
+  'monospace'
+];
 const double kEditorFontSize = 13;
 const double kEditorLineFactor = 1.55;
 const double kLineHeight = kEditorFontSize * kEditorLineFactor;
@@ -19,23 +25,83 @@ class _Seg {
 }
 
 const _blockKw = {
-  'table', 'tablegroup', 'tablepartial', 'enum', 'ref', 'project', 'note', 'indexes'
+  'table',
+  'tablegroup',
+  'tablepartial',
+  'enum',
+  'ref',
+  'project',
+  'note',
+  'indexes'
 };
 const _settingKw = {
-  'pk', 'primary', 'key', 'unique', 'not', 'null', 'increment', 'default', 'ref', 'note',
-  'delete', 'update', 'color', 'headercolor', 'inactive', 'name', 'type', 'check',
-  'cascade', 'restrict', 'set', 'no', 'action'
+  'pk',
+  'primary',
+  'key',
+  'unique',
+  'not',
+  'null',
+  'increment',
+  'default',
+  'ref',
+  'note',
+  'delete',
+  'update',
+  'color',
+  'headercolor',
+  'inactive',
+  'name',
+  'type',
+  'check',
+  'cascade',
+  'restrict',
+  'set',
+  'no',
+  'action'
 };
 const _types = {
-  'int', 'integer', 'bigint', 'smallint', 'tinyint', 'serial', 'bigserial', 'varchar',
-  'char', 'text', 'string', 'boolean', 'bool', 'float', 'double', 'decimal', 'numeric',
-  'real', 'timestamp', 'timestamptz', 'date', 'datetime', 'time', 'uuid', 'json',
-  'jsonb', 'blob', 'bytea', 'money', 'enum'
+  'int',
+  'integer',
+  'bigint',
+  'smallint',
+  'tinyint',
+  'serial',
+  'bigserial',
+  'varchar',
+  'char',
+  'text',
+  'string',
+  'boolean',
+  'bool',
+  'float',
+  'double',
+  'decimal',
+  'numeric',
+  'real',
+  'timestamp',
+  'timestamptz',
+  'date',
+  'datetime',
+  'time',
+  'uuid',
+  'json',
+  'jsonb',
+  'blob',
+  'bytea',
+  'money',
+  'enum'
+};
+
+final _completionWords = <String>{
+  ..._blockKw,
+  ..._settingKw,
+  ..._types,
+  'as',
 };
 
 class _Syn {
-  const _Syn(this.comment, this.string, this.keyword, this.type, this.setting, this.number,
-      this.op, this.color);
+  const _Syn(this.comment, this.string, this.keyword, this.type, this.setting,
+      this.number, this.op, this.color);
   final Color comment, string, keyword, type, setting, number, op, color;
 
   TextStyle of(_T t) => switch (t) {
@@ -49,11 +115,23 @@ class _Syn {
         _T.color => TextStyle(color: color),
       };
 
-  static const dark = _Syn(Color(0xFF7F8AA3), Color(0xFFC3E88D), Color(0xFFC792EA),
-      Color(0xFF82AAFF), Color(0xFFF78C6C), Color(0xFFFFCB6B), Color(0xFF89DDFF),
+  static const dark = _Syn(
+      Color(0xFF7F8AA3),
+      Color(0xFFC3E88D),
+      Color(0xFFC792EA),
+      Color(0xFF82AAFF),
+      Color(0xFFF78C6C),
+      Color(0xFFFFCB6B),
+      Color(0xFF89DDFF),
       Color(0xFFFFCB6B));
-  static const light = _Syn(Color(0xFF6B7280), Color(0xFF15803D), Color(0xFF7C3AED),
-      Color(0xFF1D4ED8), Color(0xFFC2410C), Color(0xFFB45309), Color(0xFF0E7490),
+  static const light = _Syn(
+      Color(0xFF6B7280),
+      Color(0xFF15803D),
+      Color(0xFF7C3AED),
+      Color(0xFF1D4ED8),
+      Color(0xFFC2410C),
+      Color(0xFFB45309),
+      Color(0xFF0E7490),
       Color(0xFFB45309));
 }
 
@@ -61,7 +139,8 @@ List<_Seg> _scan(String s, Set<String> enums) {
   final out = <_Seg>[];
   final n = s.length;
   var i = 0, bracket = 0;
-  bool wordStart(int c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
+  bool wordStart(int c) =>
+      (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
   bool digit(int c) => c >= 48 && c <= 57;
   bool word(int c) => wordStart(c) || digit(c);
   bool hex(int c) => digit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
@@ -164,7 +243,8 @@ List<_Seg> _scan(String s, Set<String> enums) {
 class DbmlTextController extends TextEditingController {
   DbmlTextController({super.text});
 
-  static final _enumRe = RegExp(r'^\s*enum\s+(\w+)', multiLine: true, caseSensitive: false);
+  static final _enumRe =
+      RegExp(r'^\s*enum\s+(\w+)', multiLine: true, caseSensitive: false);
   static const _errStyle = TextStyle(
     decoration: TextDecoration.underline,
     decorationStyle: TextDecorationStyle.wavy,
@@ -181,7 +261,10 @@ class DbmlTextController extends TextEditingController {
   }
 
   bool _isWordChar(int c) =>
-      (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
+      (c >= 48 && c <= 57) ||
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      c == 95;
 
   List<(int, int)> _errorRanges(String t) {
     if (_issues.isEmpty) return const [];
@@ -214,7 +297,8 @@ class DbmlTextController extends TextEditingController {
           s++;
         }
         e = le;
-        while (e > s && (t.codeUnitAt(e - 1) == 32 || t.codeUnitAt(e - 1) == 9)) {
+        while (
+            e > s && (t.codeUnitAt(e - 1) == 32 || t.codeUnitAt(e - 1) == 9)) {
           e--;
         }
       } else {
@@ -234,7 +318,9 @@ class DbmlTextController extends TextEditingController {
     final merged = <(int, int)>[];
     for (final r in out) {
       if (merged.isNotEmpty && r.$1 <= merged.last.$2) {
-        if (r.$2 > merged.last.$2) merged[merged.length - 1] = (merged.last.$1, r.$2);
+        if (r.$2 > merged.last.$2) {
+          merged[merged.length - 1] = (merged.last.$1, r.$2);
+        }
       } else {
         merged.add(r);
       }
@@ -251,7 +337,9 @@ class DbmlTextController extends TextEditingController {
     final t = text;
     final base = style ?? const TextStyle();
     if (t.isEmpty) return TextSpan(style: base, text: '');
-    final syn = Theme.of(context).brightness == Brightness.dark ? _Syn.dark : _Syn.light;
+    final syn = Theme.of(context).brightness == Brightness.dark
+        ? _Syn.dark
+        : _Syn.light;
     final enums = {for (final m in _enumRe.allMatches(t)) m.group(1)!};
     final segs = _scan(t, enums);
     final errs = _errorRanges(t);
@@ -264,7 +352,8 @@ class DbmlTextController extends TextEditingController {
         if (r.$1 >= b) break;
         final s0 = math.max(p, r.$1), e0 = math.min(b, r.$2);
         if (s0 > p) kids.add(TextSpan(text: t.substring(p, s0), style: st));
-        kids.add(TextSpan(text: t.substring(s0, e0), style: st.merge(_errStyle)));
+        kids.add(
+            TextSpan(text: t.substring(s0, e0), style: st.merge(_errStyle)));
         p = e0;
       }
       if (p < b) kids.add(TextSpan(text: t.substring(p, b), style: st));
@@ -305,6 +394,9 @@ class _CodeEditorState extends State<CodeEditor> {
   int _lines = 1, _maxLen = 0;
   List<DbmlIssue>? _iss;
   double _cw = 7.8;
+  String _completionPrefix = '';
+  List<String> _completionItems = const [];
+  int _completionIndex = 0;
 
   static const _strut = StrutStyle(
     fontSize: kEditorFontSize,
@@ -328,6 +420,9 @@ class _CodeEditorState extends State<CodeEditor> {
     _cw = tp.width / 10;
     _measure();
     widget.controller.addListener(_onCtl);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateCompletions();
+    });
   }
 
   @override
@@ -358,6 +453,111 @@ class _CodeEditorState extends State<CodeEditor> {
     final l = _lines, m = _maxLen, i = _iss;
     _measure();
     if (l != _lines || m != _maxLen || !identical(i, _iss)) setState(() {});
+    _updateCompletions();
+  }
+
+  void _updateCompletions() {
+    final c = widget.controller;
+    final offset = c.selection.isValid ? c.selection.baseOffset : -1;
+    if (offset < 0 || offset > c.text.length) {
+      if (_completionItems.isNotEmpty) {
+        setState(() {
+          _completionItems = const [];
+          _completionIndex = 0;
+        });
+      }
+
+      return;
+    }
+
+    var start = offset;
+    while (start > 0 && RegExp(r'[A-Za-z0-9_]').hasMatch(c.text[start - 1])) {
+      start--;
+    }
+    final prefix = c.text.substring(start, offset);
+    if (prefix.isEmpty) {
+      if (_completionItems.isNotEmpty) {
+        setState(() {
+          _completionItems = const [];
+          _completionIndex = 0;
+        });
+      }
+      return;
+    }
+    final words = <String>{
+      ..._completionWords,
+      ...RegExp(r'\b(?:Table|Enum)\s+([A-Za-z_][A-Za-z0-9_]*)')
+          .allMatches(c.text)
+          .map((m) => m.group(1)!),
+    };
+    final items = words
+        .where((word) => word.toLowerCase().startsWith(prefix.toLowerCase()))
+        .where((word) => word != prefix)
+        .toList()
+      ..sort((a, b) => a.length == b.length
+          ? a.toLowerCase().compareTo(b.toLowerCase())
+          : a.length.compareTo(b.length));
+    final next = items.take(8).toList();
+    if (_completionPrefix != prefix ||
+        next.length != _completionItems.length ||
+        !_sameItems(next, _completionItems)) {
+      setState(() {
+        _completionPrefix = prefix;
+        _completionItems = next;
+        _completionIndex = 0;
+      });
+    }
+  }
+
+  void _handleChanged(String value) {
+    widget.onChanged(value);
+    _updateCompletions();
+  }
+
+  void _moveCompletion(int delta) {
+    if (_completionItems.isEmpty) return;
+    setState(() {
+      _completionIndex = (_completionIndex + delta) % _completionItems.length;
+      if (_completionIndex < 0) {
+        _completionIndex += _completionItems.length;
+      }
+    });
+  }
+
+  void _acceptCompletion() {
+    if (_completionItems.isEmpty) return;
+    _applyCompletion(_completionItems[_completionIndex]);
+  }
+
+  Offset _completionPosition() {
+    final c = widget.controller;
+    final offset = c.selection.isValid
+        ? c.selection.baseOffset.clamp(0, c.text.length)
+        : 0;
+    final lineStart = c.text.lastIndexOf('\n', offset - 1) + 1;
+    final column = offset - lineStart;
+    final line = '\n'.allMatches(c.text.substring(0, offset)).length;
+    return Offset(
+      10 + column * _cw,
+      12 + (line + 1) * kLineHeight,
+    );
+  }
+
+  bool _sameItems(List<String> a, List<String> b) =>
+      a.length == b.length && a.indexed.every((e) => e.$2 == b[e.$1]);
+
+  void _applyCompletion(String word) {
+    final c = widget.controller;
+    final offset = c.selection.baseOffset;
+    final start = offset - _completionPrefix.length;
+    final value = c.text.replaceRange(start, offset, word);
+    c.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: start + word.length),
+    );
+    widget.onChanged(value);
+    setState(() => _completionItems = const []);
+    widget.focusNode.requestFocus();
   }
 
   void _insertTab() {
@@ -375,11 +575,14 @@ class _CodeEditorState extends State<CodeEditor> {
     final cs = Theme.of(context).colorScheme;
     final errLines = {for (final i in widget.controller.issues) i.line};
     return LayoutBuilder(builder: (ctx, cons) {
-      final minLines = math.max(1, ((cons.maxHeight - 24) / kLineHeight).floor());
+      final minLines =
+          math.max(1, ((cons.maxHeight - 24) / kLineHeight).floor());
       final gutterW = math.max(46.0, '$_lines'.length * _cw + 30);
       final textW = math.max(cons.maxWidth - gutterW, _maxLen * _cw + 90);
-      final numStyle = _mono.copyWith(color: cs.onSurfaceVariant.withAlpha(150));
-      final errNum = _mono.copyWith(color: const Color(0xFFFF3B30), fontWeight: FontWeight.w700);
+      final numStyle =
+          _mono.copyWith(color: cs.onSurfaceVariant.withAlpha(150));
+      final errNum = _mono.copyWith(
+          color: const Color(0xFFFF3B30), fontWeight: FontWeight.w700);
       return ColoredBox(
         color: cs.surface,
         child: SingleChildScrollView(
@@ -409,25 +612,81 @@ class _CodeEditorState extends State<CodeEditor> {
                   child: CallbackShortcuts(
                     bindings: {
                       const SingleActivator(LogicalKeyboardKey.tab): _insertTab,
+                      if (_completionItems.isNotEmpty) ...{
+                        const SingleActivator(LogicalKeyboardKey.arrowDown):
+                            () => _moveCompletion(1),
+                        const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+                            _moveCompletion(-1),
+                        const SingleActivator(LogicalKeyboardKey.enter):
+                            _acceptCompletion,
+                      },
                     },
-                    child: TextField(
-                      controller: widget.controller,
-                      focusNode: widget.focusNode,
-                      onChanged: widget.onChanged,
-                      maxLines: null,
-                      minLines: minLines,
-                      keyboardType: TextInputType.multiline,
-                      style: _mono.copyWith(color: cs.onSurface),
-                      strutStyle: _strut,
-                      cursorColor: cs.primary,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      smartDashesType: SmartDashesType.disabled,
-                      smartQuotesType: SmartQuotesType.disabled,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.fromLTRB(10, 12, 16, 12),
-                      ),
+                    child: Stack(
+                      children: [
+                        TextField(
+                          controller: widget.controller,
+                          focusNode: widget.focusNode,
+                          onChanged: _handleChanged,
+                          maxLines: null,
+                          minLines: minLines,
+                          keyboardType: TextInputType.multiline,
+                          style: _mono.copyWith(color: cs.onSurface),
+                          strutStyle: _strut,
+                          cursorColor: cs.primary,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          smartDashesType: SmartDashesType.disabled,
+                          smartQuotesType: SmartQuotesType.disabled,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.fromLTRB(10, 12, 16, 12),
+                          ),
+                        ),
+                        if (_completionItems.isNotEmpty)
+                          Positioned(
+                            left: _completionPosition().dx,
+                            top: _completionPosition().dy,
+                            child: Material(
+                              color: cs.surfaceContainerHighest,
+                              shadowColor: Colors.black.withAlpha(180),
+                              elevation: 12,
+                              borderRadius: BorderRadius.circular(6),
+                              clipBehavior: Clip.antiAlias,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                    minWidth: 190, maxWidth: 280),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (var i = 0;
+                                        i < _completionItems.length;
+                                        i++)
+                                      InkWell(
+                                        onTap: () => _applyCompletion(
+                                            _completionItems[i]),
+                                        child: ColoredBox(
+                                          color: i == _completionIndex
+                                              ? cs.primary.withAlpha(45)
+                                              : Colors.transparent,
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 7),
+                                            child: Text(
+                                              _completionItems[i],
+                                              style: _mono.copyWith(
+                                                  color: cs.onSurface),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
