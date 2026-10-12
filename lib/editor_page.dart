@@ -12,6 +12,7 @@ import 'dialogs.dart';
 import 'erd_controller.dart';
 import 'erd_painter.dart';
 import 'export.dart';
+import 'layout.dart';
 import 'source_edit.dart';
 
 const kSample = r'''
@@ -76,6 +77,8 @@ class _EditorPageState extends State<EditorPage> {
   Offset? _mStart;
   Set<String> _mBase = {};
   double _tpScale = 1;
+  bool _pointerMoved = false;
+  bool _primaryPointerDown = false;
 
   @override
   void initState() {
@@ -252,6 +255,7 @@ class _EditorPageState extends State<EditorPage> {
       HardwareKeyboard.instance.isShiftPressed;
 
   void _down(PointerDownEvent e) {
+    _primaryPointerDown = false;
     canvasFocus.requestFocus();
     final w = c.screenToWorld(e.localPosition);
     if (e.buttons & kSecondaryMouseButton != 0) {
@@ -267,6 +271,8 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
     if (e.buttons & kPrimaryButton == 0) return;
+    _primaryPointerDown = true;
+    _pointerMoved = false;
     final n = c.hit(w);
     if (n != null) {
       if (_additive) {
@@ -288,6 +294,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   void _move(PointerMoveEvent e) {
+    if (e.delta.distance > 1) _pointerMoved = true;
     switch (_drag) {
       case _Drag.tables:
         c.moveSelected(e.delta / c.scale); // exactly follows the cursor
@@ -304,7 +311,69 @@ class _EditorPageState extends State<EditorPage> {
 
   void _up(PointerEvent e) {
     if (_drag == _Drag.marquee) c.setMarquee(null, _mBase);
+    if (_primaryPointerDown &&
+        !_pointerMoved &&
+        e is PointerUpEvent &&
+        e.buttons == 0) {
+      _renameAt(c.screenToWorld(e.localPosition));
+    }
+    _primaryPointerDown = false;
     _drag = _Drag.none;
+  }
+
+  Future<void> _renameAt(Offset world) async {
+    final tableName = c.hit(world);
+    if (tableName == null) return;
+    final table = c.byName[tableName];
+    final rect = c.tableRect(tableName);
+    if (table == null || rect == null) return;
+    final localY = world.dy - rect.top;
+    String? oldName;
+    String? tableForColumn;
+    if (localY >= 0 && localY < ErdMetrics.headerH) {
+      oldName = tableName;
+    } else if (localY >= ErdMetrics.headerH) {
+      final index = ((localY - ErdMetrics.headerH) / ErdMetrics.rowH).floor();
+      if (index >= 0 && index < table.columns.length) {
+        oldName = table.columns[index].name;
+        tableForColumn = tableName;
+      }
+    }
+    if (oldName == null) return;
+    final controller = TextEditingController(text: oldName);
+    final renamed = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tableForColumn == null ? 'Rename table' : 'Rename field'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Rename')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || renamed == null) return;
+    final newName = renamed.trim();
+    if (newName.isEmpty || newName == oldName) return;
+    final updated = tableForColumn == null
+        ? renameDbmlTable(text.text, oldName, newName)
+        : renameDbmlColumn(text.text, tableForColumn, oldName, newName);
+    text.value = TextEditingValue(
+        text: updated,
+        selection: TextSelection.collapsed(offset: updated.length));
+    c.pos.clear();
+    c.needsFit = true;
+    c.update(updated);
   }
 
   void _signal(PointerSignalEvent e) {
