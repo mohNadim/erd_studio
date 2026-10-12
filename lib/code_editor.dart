@@ -570,6 +570,123 @@ class _CodeEditorState extends State<CodeEditor> {
     widget.onChanged(nt);
   }
 
+  void _outdent() {
+    final c = widget.controller;
+    final selection = c.selection;
+    if (!selection.isValid) return;
+    final lineStart = c.text.lastIndexOf('\n', selection.start - 1) + 1;
+    if (!c.text.substring(lineStart).startsWith('  ')) return;
+    final value = c.text.replaceRange(lineStart, lineStart + 2, '');
+    c.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(
+          offset: math.max(lineStart, selection.start - 2)),
+    );
+    widget.onChanged(value);
+  }
+
+  TextEditingValue _replaceSelection(String replacement, {int? caretOffset}) {
+    final c = widget.controller;
+    final selection = c.selection;
+    final start = selection.start;
+    final end = selection.end;
+    final value = c.text.replaceRange(start, end, replacement);
+    final caret = caretOffset ?? start + replacement.length;
+    return TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: caret),
+    );
+  }
+
+  KeyEventResult _handleEditorKey(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final c = widget.controller;
+    final selection = c.selection;
+    if (!selection.isValid) return KeyEventResult.ignored;
+
+    if (_completionItems.isNotEmpty &&
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      _acceptCompletion();
+      return KeyEventResult.handled;
+    }
+
+    final pairs = <String, (String, String)>{
+      '(': ('(', ')'),
+      '[': ('[', ']'),
+      '{': ('{', '}'),
+      '"': ('"', '"'),
+      "'": ("'", "'"),
+    };
+    final pair = event.character == null ? null : pairs[event.character!];
+    if (pair != null) {
+      if (selection.isCollapsed &&
+          selection.end < c.text.length &&
+          c.text[selection.end] == pair.$2) {
+        c.selection = TextSelection.collapsed(offset: selection.end + 1);
+        return KeyEventResult.handled;
+      }
+      final selected = c.text.substring(selection.start, selection.end);
+      final spaced = pair.$1 == '{';
+      final replacement = selected.isEmpty
+          ? '${pair.$1}${spaced ? ' ' : ''}${pair.$2}'
+          : '${pair.$1}$selected${pair.$2}';
+      final next = _replaceSelection(replacement,
+          caretOffset: selection.start +
+              (selected.isEmpty ? (spaced ? 2 : 1) : replacement.length));
+      c.value = next;
+      widget.onChanged(next.text);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      final lineStart = c.text.lastIndexOf('\n', selection.start - 1) + 1;
+      final currentLine = c.text.substring(lineStart, selection.start);
+      final indentation =
+          RegExp(r'^[ \t]*').firstMatch(currentLine)?.group(0) ?? '';
+      final opens = RegExp(r'[\{\[\(]').allMatches(currentLine).length;
+      final closes = RegExp(r'[\}\]\)]').allMatches(currentLine).length;
+      final extra = opens > closes ? '  ' : '';
+      final afterCaret = c.text.substring(selection.end);
+      final closing = afterCaret.startsWith('}') ||
+          afterCaret.startsWith(']') ||
+          afterCaret.startsWith(')');
+      final replacement = closing && extra.isNotEmpty
+          ? '\n$indentation$extra\n$indentation'
+          : '\n$indentation$extra';
+      final next = _replaceSelection(replacement);
+      c.value = next;
+      if (closing && extra.isNotEmpty) {
+        c.selection = TextSelection.collapsed(
+            offset: selection.start + indentation.length + extra.length + 1);
+      }
+      widget.onChanged(next.text);
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.backspace &&
+        selection.isCollapsed &&
+        selection.start > 0 &&
+        selection.end < c.text.length) {
+      final before = c.text[selection.start - 1];
+      final after = c.text[selection.start];
+      if ((before == '(' && after == ')') ||
+          (before == '[' && after == ']') ||
+          (before == '{' && after == '}') ||
+          (before == '"' && after == '"') ||
+          (before == "'" && after == "'")) {
+        final value =
+            c.text.replaceRange(selection.start - 1, selection.start + 1, '');
+        c.value = TextEditingValue(
+          text: value,
+          selection: TextSelection.collapsed(offset: selection.start - 1),
+        );
+        widget.onChanged(value);
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -612,6 +729,8 @@ class _CodeEditorState extends State<CodeEditor> {
                   child: CallbackShortcuts(
                     bindings: {
                       const SingleActivator(LogicalKeyboardKey.tab): _insertTab,
+                      const SingleActivator(LogicalKeyboardKey.tab,
+                          shift: true): _outdent,
                       if (_completionItems.isNotEmpty) ...{
                         const SingleActivator(LogicalKeyboardKey.arrowDown):
                             () => _moveCompletion(1),
@@ -621,72 +740,78 @@ class _CodeEditorState extends State<CodeEditor> {
                             _acceptCompletion,
                       },
                     },
-                    child: Stack(
-                      children: [
-                        TextField(
-                          controller: widget.controller,
-                          focusNode: widget.focusNode,
-                          onChanged: _handleChanged,
-                          maxLines: null,
-                          minLines: minLines,
-                          keyboardType: TextInputType.multiline,
-                          style: _mono.copyWith(color: cs.onSurface),
-                          strutStyle: _strut,
-                          cursorColor: cs.primary,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          smartDashesType: SmartDashesType.disabled,
-                          smartQuotesType: SmartQuotesType.disabled,
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.fromLTRB(10, 12, 16, 12),
+                    child: Focus(
+                      onKeyEvent: _handleEditorKey,
+                      child: Stack(
+                        children: [
+                          TextField(
+                            controller: widget.controller,
+                            focusNode: widget.focusNode,
+                            onChanged: _handleChanged,
+                            maxLines: null,
+                            minLines: minLines,
+                            keyboardType: TextInputType.multiline,
+                            style: _mono.copyWith(color: cs.onSurface),
+                            strutStyle: _strut,
+                            cursorColor: cs.primary,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            smartDashesType: SmartDashesType.disabled,
+                            smartQuotesType: SmartQuotesType.disabled,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              contentPadding:
+                                  EdgeInsets.fromLTRB(10, 12, 16, 12),
+                            ),
                           ),
-                        ),
-                        if (_completionItems.isNotEmpty)
-                          Positioned(
-                            left: _completionPosition().dx,
-                            top: _completionPosition().dy,
-                            child: Material(
-                              color: cs.surfaceContainerHighest,
-                              shadowColor: Colors.black.withAlpha(180),
-                              elevation: 12,
-                              borderRadius: BorderRadius.circular(6),
-                              clipBehavior: Clip.antiAlias,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                    minWidth: 190, maxWidth: 280),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (var i = 0;
-                                        i < _completionItems.length;
-                                        i++)
-                                      InkWell(
-                                        onTap: () => _applyCompletion(
-                                            _completionItems[i]),
-                                        child: ColoredBox(
-                                          color: i == _completionIndex
-                                              ? cs.primary.withAlpha(45)
-                                              : Colors.transparent,
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 7),
-                                            child: Text(
-                                              _completionItems[i],
-                                              style: _mono.copyWith(
-                                                  color: cs.onSurface),
+                          if (_completionItems.isNotEmpty)
+                            Positioned(
+                              left: _completionPosition().dx,
+                              top: _completionPosition().dy,
+                              child: Material(
+                                color: cs.surfaceContainerHighest,
+                                shadowColor: Colors.black.withAlpha(180),
+                                elevation: 12,
+                                borderRadius: BorderRadius.circular(6),
+                                clipBehavior: Clip.antiAlias,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                      minWidth: 190, maxWidth: 280),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (var i = 0;
+                                          i < _completionItems.length;
+                                          i++)
+                                        InkWell(
+                                          onTap: () => _applyCompletion(
+                                              _completionItems[i]),
+                                          child: ColoredBox(
+                                            color: i == _completionIndex
+                                                ? cs.primary.withAlpha(45)
+                                                : Colors.transparent,
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 7),
+                                              child: Text(
+                                                _completionItems[i],
+                                                style: _mono.copyWith(
+                                                    color: cs.onSurface),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
