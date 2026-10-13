@@ -34,7 +34,17 @@ extension _EditorCanvasInteraction on _EditorPageState {
     final note = c.hitNote(world);
     if (note != null) {
       _draggedNoteId = note.id;
-      _drag = _Drag.note;
+      final position = c.notePos[note.id];
+      final handleSize = 16 / c.scale;
+      if (position != null &&
+          world.dx >= position.dx + note.size.width - handleSize &&
+          world.dy >= position.dy + note.size.height - handleSize) {
+        _drag = _Drag.noteResize;
+        _noteResizeStart = world;
+        _noteResizeInitialSize = note.size;
+      } else {
+        _drag = _Drag.note;
+      }
       return;
     }
     final name = c.hit(world);
@@ -65,6 +75,20 @@ extension _EditorCanvasInteraction on _EditorPageState {
       case _Drag.note:
         if (_draggedNoteId != null) {
           c.moveNote(_draggedNoteId!, event.delta / c.scale);
+        }
+      case _Drag.noteResize:
+        if (_draggedNoteId != null &&
+            _noteResizeStart != null &&
+            _noteResizeInitialSize != null) {
+          final world = c.screenToWorld(event.localPosition);
+          final delta = world - _noteResizeStart!;
+          c.resizeNote(
+            _draggedNoteId!,
+            Size(
+              (_noteResizeInitialSize!.width + delta.dx).clamp(140.0, 600.0),
+              (_noteResizeInitialSize!.height + delta.dy).clamp(90.0, 500.0),
+            ),
+          );
         }
       case _Drag.pan:
         c.panBy(event.delta);
@@ -106,6 +130,8 @@ extension _EditorCanvasInteraction on _EditorPageState {
     }
     _primaryPointerDown = false;
     _draggedNoteId = null;
+    _noteResizeStart = null;
+    _noteResizeInitialSize = null;
     _drag = _Drag.none;
   }
 

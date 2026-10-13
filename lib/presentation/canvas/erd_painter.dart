@@ -68,6 +68,9 @@ class ErdPainter extends CustomPainter {
   final bool forExport;
   final RelationLineStyle relationLineStyle;
 
+  /// المسافة بين حافة الجدول والخط العمودي للعلاقة.
+  static const double _clearance = 32.0;
+
   bool _sel(String n) => !forExport && c.selection.contains(n);
 
   /// Interactive painting: background, grid, then the world through the view transform.
@@ -146,6 +149,11 @@ class ErdPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = Colors.black.withAlpha(45));
+    final handle = Paint()..color = Colors.black.withAlpha(75);
+    canvas.drawLine(
+        rect.bottomRight - const Offset(14, 0), rect.bottomRight, handle);
+    canvas.drawLine(
+        rect.bottomRight - const Offset(0, 14), rect.bottomRight, handle);
     final text = ErdText.lay(
       note.text,
       TextStyle(
@@ -237,49 +245,73 @@ class ErdPainter extends CustomPainter {
     return o.dy + ErdMetrics.headerH + (i + 0.5) * ErdMetrics.rowH;
   }
 
+  /// يحدد جهة الخروج من الجدول الأول والدخول إلى الثاني
+  /// (true = الجهة اليمنى، false = الجهة اليسرى).
+  (bool, bool) _sides(Rect a, Rect b) {
+    const gap = _clearance * 2;
+    if (a.right + gap <= b.left) return (true, false); // a على اليسار
+    if (b.right + gap <= a.left) return (false, true); // a على اليمين
+    // متداخلان أفقياً: نفس الجهة للطرفين (مسار على شكل C)
+    final rightX = max(a.right, b.right) + _clearance;
+    final leftX = min(a.left, b.left) - _clearance;
+    final rightCost =
+        (rightX - a.center.dx).abs() + (rightX - b.center.dx).abs();
+    final leftCost = (leftX - a.center.dx).abs() + (leftX - b.center.dx).abs();
+    final right = rightCost <= leftCost;
+    return (right, right);
+  }
+
   void _edge(Canvas canvas, RefModel r, Rect cull) {
     final a = c.tableRect(r.fromTable), b = c.tableRect(r.toTable);
     if (a == null || b == null) return;
     if (!a.expandToInclude(b).overlaps(cull)) return;
-    // Keep both endpoints aligned with their actual fields. The relationship
-    // may route vertically, but it must leave each table through its side.
-    final fromRight = b.center.dx >= a.center.dx;
-    final toRight = !fromRight;
-    final p1 = Offset(
-      fromRight ? a.right : a.left,
-      _colY(r.fromTable, r.fromColumn),
-    );
-    final p2 = Offset(
-      toRight ? b.right : b.left,
-      _colY(r.toTable, r.toColumn),
-    );
-    final d1 = Offset(fromRight ? 1 : -1, 0);
-    final d2 = Offset(toRight ? 1 : -1, 0);
-    final k = max(60.0, (p2 - p1).distance / 2);
+    final y1 = _colY(r.fromTable, r.fromColumn);
+    final y2 = _colY(r.toTable, r.toColumn);
     final hot = _sel(r.fromTable) || _sel(r.toTable);
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = hot ? 2.2 : 1.5
       ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
       ..color = hot ? pal.accent : pal.edge;
-    final path = Path()..moveTo(p1.dx, p1.dy);
+
+    final (fromRight, toRight) = _sides(a, b);
+    final p1 = Offset(fromRight ? a.right : a.left, y1);
+    final p2 = Offset(toRight ? b.right : b.left, y2);
+    final d1 = Offset(fromRight ? 1 : -1, 0);
+    final d2 = Offset(toRight ? 1 : -1, 0);
+
     if (relationLineStyle == RelationLineStyle.orthogonal) {
-      const clearance = 40.0;
-      final q1 = p1 + d1 * clearance;
-      final q2 = p2 + d2 * clearance;
-      path
-        ..lineTo(q1.dx, q1.dy)
-        ..lineTo(q2.dx, q1.dy)
-        ..lineTo(q2.dx, q2.dy)
-        ..lineTo(p2.dx, p2.dy);
+      final pts = _orthogonalPoints(p1, p2, fromRight, toRight);
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final p in pts.skip(1)) {
+        path.lineTo(p.dx, p.dy);
+      }
+      canvas.drawPath(path, paint);
     } else {
+      final k = max(60.0, (p2 - p1).distance / 2);
       final q1 = p1 + d1 * k;
       final q2 = p2 + d2 * k;
-      path.cubicTo(q1.dx, q1.dy, q2.dx, q2.dy, p2.dx, p2.dy);
+      final path = Path()
+        ..moveTo(p1.dx, p1.dy)
+        ..cubicTo(q1.dx, q1.dy, q2.dx, q2.dy, p2.dx, p2.dy);
+      canvas.drawPath(path, paint);
     }
-    canvas.drawPath(path, paint);
     _marker(canvas, p1, d1, r.fromMany, paint);
     _marker(canvas, p2, d2, r.toMany, paint);
+  }
+
+  List<Offset> _orthogonalPoints(
+      Offset p1, Offset p2, bool fromRight, bool toRight) {
+    final double x;
+    if (fromRight != toRight) {
+      x = (p1.dx + p2.dx) / 2; // منتصف الفراغ بين الجدولين
+    } else if (fromRight) {
+      x = max(p1.dx, p2.dx) + _clearance; // خارج الجدولين من اليمين
+    } else {
+      x = min(p1.dx, p2.dx) - _clearance; // خارج الجدولين من اليسار
+    }
+    return [p1, Offset(x, p1.dy), Offset(x, p2.dy), p2];
   }
 
   void _marker(Canvas c, Offset p, Offset d, bool many, Paint paint) {

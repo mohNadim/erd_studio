@@ -21,7 +21,7 @@ part 'editor_file_actions.dart';
 part 'editor_canvas_interaction.dart';
 part 'editor_problems_view.dart';
 
-enum _Drag { none, tables, note, pan, marquee }
+enum _Drag { none, tables, note, noteResize, pan, marquee }
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key, required this.onToggleTheme});
@@ -50,6 +50,8 @@ class _EditorPageState extends State<EditorPage> {
   bool _pointerMoved = false;
   bool _primaryPointerDown = false;
   String? _draggedNoteId;
+  Offset? _noteResizeStart;
+  Size? _noteResizeInitialSize;
   Duration? _lastPrimaryTap;
   Offset? _lastPrimaryTapWorld;
 

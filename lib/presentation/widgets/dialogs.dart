@@ -46,8 +46,6 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
   late final TextEditingController text;
   late int color;
   late double fontSize;
-  late double width;
-  late double height;
 
   @override
   void initState() {
@@ -56,8 +54,6 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
     text = TextEditingController(text: initial?.text);
     color = initial?.color ?? 0xFFFFF59D;
     fontSize = initial?.fontSize ?? 14;
-    width = initial?.size.width ?? 220;
-    height = initial?.size.height ?? 140;
   }
 
   @override
@@ -127,29 +123,6 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
                 divisions: 18,
                 onChanged: (value) => setState(() => fontSize = value),
               ),
-              Text('Size: ${width.toInt()} × ${height.toInt()}'),
-              Row(
-                children: [
-                  Expanded(
-                    child: Slider(
-                      value: width,
-                      min: 140,
-                      max: 420,
-                      divisions: 28,
-                      onChanged: (value) => setState(() => width = value),
-                    ),
-                  ),
-                  Expanded(
-                    child: Slider(
-                      value: height,
-                      min: 90,
-                      max: 300,
-                      divisions: 21,
-                      onChanged: (value) => setState(() => height = value),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -168,7 +141,7 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
                   text: value,
                   color: color,
                   fontSize: fontSize,
-                  size: Size(width, height),
+                  size: widget.initial?.size ?? const Size(220, 140),
                 ),
               );
             },
