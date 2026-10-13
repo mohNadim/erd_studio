@@ -13,6 +13,7 @@ import '../widgets/dialogs.dart';
 import '../controllers/erd_controller.dart';
 import '../canvas/erd_painter.dart';
 import '../../application/export/erd_export_service.dart';
+import '../../domain/entities/schema_models.dart';
 import '../../domain/services/erd_layout_service.dart';
 import '../../domain/services/dbml_source_edit_service.dart';
 
@@ -20,8 +21,7 @@ part 'editor_file_actions.dart';
 part 'editor_canvas_interaction.dart';
 part 'editor_problems_view.dart';
 
-
-enum _Drag { none, tables, pan, marquee }
+enum _Drag { none, tables, note, noteResize, pan, marquee }
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key, required this.onToggleTheme});
@@ -40,6 +40,7 @@ class _EditorPageState extends State<EditorPage> {
   Timer? _debounce;
   double _editorW = 440, _problemsH = 150, _editorVH = 400;
   bool _problemsOpen = true;
+  RelationLineStyle _relationLineStyle = RelationLineStyle.curved;
   List<DbmlIssue> _shownIssues = const [];
 
   _Drag _drag = _Drag.none;
@@ -48,6 +49,11 @@ class _EditorPageState extends State<EditorPage> {
   double _tpScale = 1;
   bool _pointerMoved = false;
   bool _primaryPointerDown = false;
+  String? _draggedNoteId;
+  Offset? _noteResizeStart;
+  Size? _noteResizeInitialSize;
+  String? _hoveredNoteId;
+  bool _hoveringNoteResize = false;
   Duration? _lastPrimaryTap;
   Offset? _lastPrimaryTapWorld;
 
@@ -94,6 +100,38 @@ class _EditorPageState extends State<EditorPage> {
         Timer(const Duration(milliseconds: 250), () => c.update(text.text));
   }
 
+  Future<void> _openSettings() async {
+    final selected = await showDialog<RelationLineStyle>(
+      context: context,
+      builder: (_) => EditorSettingsDialog(
+        lineStyle: _relationLineStyle,
+        onLineStyleChanged: (value) => Navigator.pop(context, value),
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _relationLineStyle = selected);
+    }
+  }
+
+  Future<void> _createStickyNote() async {
+    final draft = await showDialog<StickyNoteDraftValues>(
+      context: context,
+      builder: (_) => const StickyNoteDialog(),
+    );
+    if (!mounted || draft == null) return;
+    final center = c.screenToWorld(
+      Offset(c.viewport.width / 2, c.viewport.height / 2),
+    );
+    final note = StickyNoteModel(
+      id: c.nextNoteId(),
+      text: draft.text,
+      color: draft.color,
+      fontSize: draft.fontSize,
+      size: draft.size,
+    );
+    c.addNote(note, center - Offset(note.size.width / 2, note.size.height / 2));
+  }
+
   // ───────────────────────────── build ─────────────────────────────
 
   @override
@@ -102,7 +140,7 @@ class _EditorPageState extends State<EditorPage> {
     final maxEditor = math.max(260.0, MediaQuery.of(context).size.width - 340);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DBML ERD Studio'),
+        title: const Text('Karasuno ERD Studio'),
         actions: [
           IconButton(
               tooltip: 'Open .dbml',
@@ -143,6 +181,16 @@ class _EditorPageState extends State<EditorPage> {
               tooltip: 'Toggle theme',
               icon: const Icon(Icons.brightness_6_outlined),
               onPressed: widget.onToggleTheme),
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _openSettings,
+          ),
+          IconButton(
+            tooltip: 'New sticky note',
+            icon: const Icon(Icons.note_add_outlined),
+            onPressed: _createStickyNote,
+          ),
         ],
       ),
       body: Row(children: [
@@ -203,21 +251,35 @@ class _EditorPageState extends State<EditorPage> {
           child: ClipRect(
             child: Stack(children: [
               Positioned.fill(
-                child: Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: _down,
-                  onPointerMove: _move,
-                  onPointerUp: _up,
-                  onPointerCancel: _up,
-                  onPointerSignal: _signal,
-                  onPointerPanZoomStart: (_) => _tpScale = 1,
-                  onPointerPanZoomUpdate: (e) {
-                    c.panBy(e.panDelta);
-                    final f = e.scale / _tpScale;
-                    _tpScale = e.scale;
-                    if (f != 1) c.zoomAt(e.localPosition, f);
-                  },
-                  child: CustomPaint(size: size, painter: ErdPainter(c, pal)),
+                child: MouseRegion(
+                  cursor: _canvasCursor,
+                  onHover: _hoverCanvas,
+                  onExit: (_) => _setNoteHover(null, false),
+                  child: Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: _down,
+                    onPointerMove: _move,
+                    onPointerUp: _up,
+                    onPointerCancel: _up,
+                    onPointerSignal: _signal,
+                    onPointerPanZoomStart: (_) => _tpScale = 1,
+                    onPointerPanZoomUpdate: (e) {
+                      c.panBy(e.panDelta);
+                      final f = e.scale / _tpScale;
+                      _tpScale = e.scale;
+                      if (f != 1) c.zoomAt(e.localPosition, f);
+                    },
+                    child: CustomPaint(
+                      size: size,
+                      painter: ErdPainter(
+                        c,
+                        pal,
+                        relationLineStyle: _relationLineStyle,
+                        hoveredNoteId: _hoveredNoteId,
+                        activeNoteId: _draggedNoteId,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               Positioned(
@@ -228,11 +290,12 @@ class _EditorPageState extends State<EditorPage> {
                     'Drag: pan · Wheel: zoom · Click: select · Ctrl/Shift+click: multi-select · '
                     'Shift+drag: box select · Right-click: color',
                     style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(ctx)
-                            .colorScheme
-                            .onSurfaceVariant
-                            .withAlpha(170)),
+                      fontSize: 11,
+                      color: Theme.of(ctx)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withAlpha(170),
+                    ),
                   ),
                 ),
               ),

@@ -12,7 +12,9 @@ enum ExportFormat { png, pdf }
 /// Renders the whole diagram (independent of the current zoom/selection) to a PNG.
 /// [scale] 4 ≈ 384 dpi; automatically capped to keep the image under 16k px.
 Future<Uint8List> renderErdPng(ErdController c, ErdPalette pal,
-    {double scale = 4, bool transparent = false}) async {
+    {double scale = 4,
+    bool transparent = false,
+    RelationLineStyle relationLineStyle = RelationLineStyle.curved}) async {
   const margin = 56.0;
   final b = c.bounds().inflate(margin);
   if (b.isEmpty || !b.width.isFinite || !b.height.isFinite) {
@@ -34,7 +36,9 @@ Future<Uint8List> renderErdPng(ErdController c, ErdPalette pal,
     canvas.drawRect(Offset.zero & b.size, Paint()..color = pal.bg);
   }
   canvas.translate(-b.left, -b.top);
-  ErdPainter(c, pal, forExport: true).paintWorld(canvas, b);
+  ErdPainter(c, pal,
+          forExport: true, relationLineStyle: relationLineStyle)
+      .paintWorld(canvas, b);
 
   final picture = rec.endRecording();
   try {
@@ -56,12 +60,15 @@ Future<Uint8List> renderErdPng(ErdController c, ErdPalette pal,
 /// Creates a PDF page containing the complete diagram as a rendered image.
 /// The page keeps the diagram's aspect ratio and uses points as PDF units.
 Future<Uint8List> renderErdPdf(ErdController c, ErdPalette pal,
-    {double scale = 4, bool transparent = false}) async {
+    {double scale = 4,
+    bool transparent = false,
+    RelationLineStyle relationLineStyle = RelationLineStyle.curved}) async {
   final png = await renderErdPng(
     c,
     pal,
     scale: scale,
     transparent: transparent,
+    relationLineStyle: relationLineStyle,
   );
   final b = c.bounds().inflate(56);
   final document = pw.Document();

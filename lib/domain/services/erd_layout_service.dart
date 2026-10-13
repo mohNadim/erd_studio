@@ -11,14 +11,17 @@ class ErdText {
   static const title =
       TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white);
   static TextStyle name(Color c, {bool bold = false}) => TextStyle(
-      fontSize: 13, color: c, fontWeight: bold ? FontWeight.w600 : FontWeight.w400);
+      fontSize: 13,
+      color: c,
+      fontWeight: bold ? FontWeight.w600 : FontWeight.w400);
   static TextStyle type(Color c) =>
       TextStyle(fontSize: 12, color: c, fontFamily: 'monospace');
 
   static final Map<String, TextPainter> _cache = {};
 
   /// Cached: laying out text is the most expensive part of painting.
-  static TextPainter lay(String s, TextStyle st, [double maxW = double.infinity]) {
+  static TextPainter lay(String s, TextStyle st,
+      [double maxW = double.infinity]) {
     final key = '${st.hashCode}|${maxW.isFinite ? maxW.round() : -1}|$s';
     final hit = _cache[key];
     if (hit != null) return hit;
@@ -28,6 +31,21 @@ class ErdText {
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
+    )..layout(maxWidth: maxW);
+  }
+
+  static TextPainter layMultiline(
+    String s,
+    TextStyle st,
+    double maxW,
+  ) {
+    final key = 'multiline|${st.hashCode}|${maxW.round()}|$s';
+    final hit = _cache[key];
+    if (hit != null) return hit;
+    if (_cache.length > 4000) _cache.clear();
+    return _cache[key] = TextPainter(
+      text: TextSpan(text: s, style: st),
+      textDirection: TextDirection.ltr,
     )..layout(maxWidth: maxW);
   }
 }
@@ -40,8 +58,8 @@ Size measureTable(TableModel t) {
     w = max(w, n + ty + ErdMetrics.pad * 3 + 34);
   }
   final rows = max(1, t.columns.length);
-  return Size(max(ErdMetrics.minW, w),
-      ErdMetrics.headerH + rows * ErdMetrics.rowH + 6);
+  return Size(
+      max(ErdMetrics.minW, w), ErdMetrics.headerH + rows * ErdMetrics.rowH + 6);
 }
 
 /// BFS-ordered grid: connected tables end up next to each other.

@@ -97,6 +97,7 @@ extension _EditorProblemsView on _EditorPageState {
                           final issue = issues[i];
                           return InkWell(
                             onTap: () => _goTo(issue),
+                            onDoubleTap: () => _goTo(issue),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,

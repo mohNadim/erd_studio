@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../controllers/erd_controller.dart';
+import '../canvas/erd_painter.dart';
 import '../../application/export/erd_export_service.dart';
 
 // ───────────────────────────── table color ─────────────────────────────
@@ -11,6 +12,231 @@ class ColorChoice {
         reset = true;
   final Color? color;
   final bool reset;
+}
+
+class StickyNoteDraftValues {
+  const StickyNoteDraftValues({
+    required this.text,
+    required this.color,
+    required this.fontSize,
+    required this.size,
+    this.delete = false,
+  });
+
+  final String text;
+  final int color;
+  final double fontSize;
+  final Size size;
+  final bool delete;
+}
+
+class StickyNoteDialog extends StatefulWidget {
+  const StickyNoteDialog({
+    super.key,
+    this.initial,
+    this.editing = false,
+  });
+
+  final StickyNoteDraftValues? initial;
+  final bool editing;
+
+  @override
+  State<StickyNoteDialog> createState() => _StickyNoteDialogState();
+}
+
+class _StickyNoteDialogState extends State<StickyNoteDialog> {
+  late final TextEditingController text;
+  late int color;
+  late double fontSize;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    text = TextEditingController(text: initial?.text);
+    color = initial?.color ?? 0xFFFFF59D;
+    fontSize = initial?.fontSize ?? 14;
+  }
+
+  @override
+  void dispose() {
+    text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.editing ? 'Edit sticky note' : 'New sticky note'),
+        content: SizedBox(
+          width: 340,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: text,
+                autofocus: true,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  hintText: 'Write a note…',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Color'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                children: [
+                  for (final value in [
+                    0xFFFFF59D,
+                    0xFFFFCC80,
+                    0xFFA5D6A7,
+                    0xFF90CAF9,
+                    0xFFCE93D8,
+                    0xFFFFAB91,
+                  ])
+                    GestureDetector(
+                      onTap: () => setState(() => color = value),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Color(value),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            width: color == value ? 3 : 1,
+                            color: color == value
+                                ? Theme.of(context).colorScheme.onSurface
+                                : Colors.black26,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('Font size: ${fontSize.toStringAsFixed(0)}'),
+              Slider(
+                value: fontSize,
+                min: 10,
+                max: 28,
+                divisions: 18,
+                onChanged: (value) => setState(() => fontSize = value),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (widget.editing)
+            TextButton.icon(
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete sticky note?'),
+                    content: const Text(
+                      'This action cannot be undone.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true && mounted) {
+                  Navigator.pop(
+                    context,
+                    StickyNoteDraftValues(
+                      text: text.text.trim(),
+                      color: color,
+                      fontSize: fontSize,
+                      size: widget.initial?.size ?? const Size(220, 140),
+                      delete: true,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = text.text.trim();
+              if (value.isEmpty) return;
+              Navigator.pop(
+                context,
+                StickyNoteDraftValues(
+                  text: value,
+                  color: color,
+                  fontSize: fontSize,
+                  size: widget.initial?.size ?? const Size(220, 140),
+                ),
+              );
+            },
+            child: Text(widget.editing ? 'Save' : 'Create'),
+          ),
+        ],
+      );
+}
+
+class EditorSettingsDialog extends StatelessWidget {
+  const EditorSettingsDialog({
+    super.key,
+    required this.lineStyle,
+    required this.onLineStyleChanged,
+  });
+
+  final RelationLineStyle lineStyle;
+  final ValueChanged<RelationLineStyle> onLineStyleChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Settings'),
+      content: SizedBox(
+        width: 340,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Relationship lines'),
+            const SizedBox(height: 8),
+            SegmentedButton<RelationLineStyle>(
+              segments: const [
+                ButtonSegment(
+                  value: RelationLineStyle.curved,
+                  label: Text('Curved'),
+                  icon: Icon(Icons.timeline),
+                ),
+                ButtonSegment(
+                  value: RelationLineStyle.orthogonal,
+                  label: Text('Orthogonal'),
+                  icon: Icon(Icons.turn_right),
+                ),
+              ],
+              selected: {lineStyle},
+              onSelectionChanged: (selection) {
+                if (selection.isNotEmpty) {
+                  onLineStyleChanged(selection.first);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 String colorToHex(Color c) =>

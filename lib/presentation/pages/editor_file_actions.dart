@@ -93,12 +93,14 @@ extension _EditorFileActions on _EditorPageState {
               palette,
               scale: options.scale,
               transparent: options.transparent,
+              relationLineStyle: _relationLineStyle,
             )
           : await renderErdPng(
               c,
               palette,
               scale: options.scale,
               transparent: options.transparent,
+              relationLineStyle: _relationLineStyle,
             );
       final file = File(path);
       await file.parent.create(recursive: true);

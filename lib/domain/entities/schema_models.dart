@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum RelType { manyToOne, oneToMany, oneToOne, manyToMany }
 
 class ColumnModel {
@@ -54,4 +56,20 @@ class SchemaModel {
   const SchemaModel(this.tables, this.refs);
   final List<TableModel> tables;
   final List<RefModel> refs;
+}
+
+class StickyNoteModel {
+  StickyNoteModel({
+    required this.id,
+    required this.text,
+    required this.color,
+    required this.fontSize,
+    required this.size,
+  });
+
+  final String id;
+  String text;
+  int color;
+  double fontSize;
+  Size size;
 }
