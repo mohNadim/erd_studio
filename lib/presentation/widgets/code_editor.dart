@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dbml_service.dart' show DbmlIssue;
+import '../../domain/entities/dbml_issue.dart' show DbmlIssue;
 
 const kMonoFonts = <String>[
   'Consolas',

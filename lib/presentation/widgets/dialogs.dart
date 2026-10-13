@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'erd_controller.dart';
-import 'export.dart';
+import '../controllers/erd_controller.dart';
+import '../../application/export/erd_export_service.dart';
 
 // ───────────────────────────── table color ─────────────────────────────
 
@@ -14,7 +14,7 @@ class ColorChoice {
 }
 
 String colorToHex(Color c) =>
-    '#${(c.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+    '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
 class ColorDialog extends StatefulWidget {
   const ColorDialog({super.key, required this.count});
@@ -85,8 +85,8 @@ class _ColorDialogState extends State<ColorDialog> {
                         color: Color(v),
                         shape: BoxShape.circle,
                         border: Border.all(
-                            width: picked?.value == v ? 3 : 1,
-                            color: picked?.value == v
+                            width: picked?.toARGB32() == v ? 3 : 1,
+                            color: picked?.toARGB32() == v
                                 ? Theme.of(context).colorScheme.onSurface
                                 : Colors.black26),
                       ),

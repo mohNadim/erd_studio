@@ -1,31 +1,8 @@
 import 'package:dbml_parser/dbml_parser.dart' as dbml;
 
-import 'models.dart';
-
-/// One problem found in the source. [line] and [column] are 1-based; 0 = unknown.
-class DbmlIssue {
-  const DbmlIssue(this.line, this.column, this.message);
-  final int line, column;
-  final String message;
-}
-
-class DbmlParseException implements Exception {
-  /// [line] is 0-based (convention of the built-in parser).
-  DbmlParseException(String message, [int? line])
-      : issues = [DbmlIssue((line ?? -1) + 1, 0, message)];
-  DbmlParseException.multi(this.issues);
-  final List<DbmlIssue> issues;
-  String get message => issues.first.message;
-  @override
-  String toString() => issues
-      .map((i) => i.line > 0 ? 'Line ${i.line}:${i.column} — ${i.message}' : i.message)
-      .join('\n');
-}
-
-/// The only place the app talks to a DBML parser.
-abstract class DbmlBackend {
-  SchemaModel parse(String source);
-}
+import '../../domain/entities/dbml_issue.dart';
+import '../../domain/entities/schema_models.dart';
+import '../../domain/repositories/dbml_parser.dart';
 
 /// Uses the `dbml_parser` package (https://pub.dev/packages/dbml_parser).
 /// Converts its AST (`DbmlDocument`) into the app's own `SchemaModel`.
@@ -355,8 +332,12 @@ class BuiltInDbmlBackend implements DbmlBackend {
         continue;
       }
       final cm = _col.firstMatch(l);
-      if (cm == null) throw DbmlParseException(
-            'Cannot parse column: "$l". Expected: name type [settings]', i);
+      if (cm == null) {
+        throw DbmlParseException(
+          'Cannot parse column: "$l". Expected: name type [settings]',
+          i,
+        );
+      }
       final colName = _unq(cm.group(1)!);
       var pk = false, nn = false, uq = false, inc = false;
       String? cnote, def;

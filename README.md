@@ -22,9 +22,25 @@ macOS: add `com.apple.security.files.user-selected.read-write` (true) to
 
 ## Parser
 Parsing is done by the [`dbml_parser`](https://pub.dev/packages/dbml_parser) package, wrapped by
-`DbmlParserPackageBackend` in `lib/dbml_service.dart` (AST -> `SchemaModel`).
+`DbmlParserPackageBackend` in `lib/data/parsing/dbml_service.dart` (AST -> `SchemaModel`).
 A lenient built-in parser (`BuiltInDbmlBackend`) is kept as an optional fallback:
 `ErdController(backend: BuiltInDbmlBackend())`.
+
+## Architecture
+The Flutter code follows a feature-oriented Clean Architecture layout:
+
+- `lib/domain`: framework-independent schema entities, parser contracts, and DBML/layout services.
+- `lib/data`: concrete DBML parser integrations and external package adapters.
+- `lib/application`: application-level export orchestration.
+- `lib/presentation`: app composition, pages, widgets, canvas rendering, and controllers.
+  The editor page is split into file actions, canvas interaction, and problems-view
+  responsibilities under `lib/presentation/pages/`.
+  `ErdController` is split into parsing, geometry, viewport, and selection mixins under
+  `lib/presentation/controllers/`.
+- `lib/main.dart`: platform entry point only.
+
+Presentation code depends on domain contracts and application services; parser package
+details remain inside `lib/data`.
 
 ## License
 MIT

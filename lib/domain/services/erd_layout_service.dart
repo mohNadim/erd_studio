@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'models.dart';
+import '../entities/schema_models.dart';
 
 class ErdMetrics {
   static const headerH = 38.0, rowH = 28.0, pad = 12.0, minW = 190.0;
