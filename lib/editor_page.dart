@@ -79,6 +79,8 @@ class _EditorPageState extends State<EditorPage> {
   double _tpScale = 1;
   bool _pointerMoved = false;
   bool _primaryPointerDown = false;
+  Duration? _lastPrimaryTap;
+  Offset? _lastPrimaryTapWorld;
 
   @override
   void initState() {
@@ -315,7 +317,19 @@ class _EditorPageState extends State<EditorPage> {
         !_pointerMoved &&
         e is PointerUpEvent &&
         e.buttons == 0) {
-      _renameAt(c.screenToWorld(e.localPosition));
+      final world = c.screenToWorld(e.localPosition);
+      final isDoubleTap = _lastPrimaryTap != null &&
+          e.timeStamp - _lastPrimaryTap! <= const Duration(milliseconds: 350) &&
+          _lastPrimaryTapWorld != null &&
+          (_lastPrimaryTapWorld! - world).distance <= 8 / c.scale;
+      if (isDoubleTap) {
+        _renameAt(world);
+        _lastPrimaryTap = null;
+        _lastPrimaryTapWorld = null;
+      } else {
+        _lastPrimaryTap = e.timeStamp;
+        _lastPrimaryTapWorld = world;
+      }
     }
     _primaryPointerDown = false;
     _drag = _Drag.none;
