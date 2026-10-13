@@ -12,6 +12,7 @@ dependencies:
   file_picker: ^8.0.0
   dbml_parser: ^0.2.0
   pdf: ^3.13.1
+  shared_preferences: ^2.5.6
 
 dev_dependencies:
   flutter_test:

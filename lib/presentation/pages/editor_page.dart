@@ -16,6 +16,7 @@ import '../../application/export/erd_export_service.dart';
 import '../../domain/entities/schema_models.dart';
 import '../../domain/services/erd_layout_service.dart';
 import '../../domain/services/dbml_source_edit_service.dart';
+import '../app/theme_settings.dart';
 
 part 'editor_file_actions.dart';
 part 'editor_canvas_interaction.dart';
@@ -24,8 +25,15 @@ part 'editor_problems_view.dart';
 enum _Drag { none, tables, note, noteResize, pan, marquee }
 
 class EditorPage extends StatefulWidget {
-  const EditorPage({super.key, required this.onToggleTheme});
-  final VoidCallback onToggleTheme;
+  const EditorPage({
+    super.key,
+    required this.themeSettings,
+    required this.initialLineStyle,
+    required this.onSettingsChanged,
+  });
+  final AppThemeSettings themeSettings;
+  final RelationLineStyle initialLineStyle;
+  final void Function(AppThemeSettings, RelationLineStyle) onSettingsChanged;
   @override
   State<EditorPage> createState() => _EditorPageState();
 }
@@ -40,7 +48,7 @@ class _EditorPageState extends State<EditorPage> {
   Timer? _debounce;
   double _editorW = 440, _problemsH = 150, _editorVH = 400;
   bool _problemsOpen = true;
-  RelationLineStyle _relationLineStyle = RelationLineStyle.curved;
+  late RelationLineStyle _relationLineStyle = widget.initialLineStyle;
   List<DbmlIssue> _shownIssues = const [];
 
   _Drag _drag = _Drag.none;
@@ -90,9 +98,21 @@ class _EditorPageState extends State<EditorPage> {
     if (mounted) setState(() {});
   }
 
-  ErdPalette get pal => Theme.of(context).brightness == Brightness.dark
-      ? ErdPalette.darkPal
-      : ErdPalette.light;
+  ErdPalette get pal {
+    final p = widget.themeSettings.resolvedPalette;
+    return ErdPalette(
+      dark: p.brightness == Brightness.dark,
+      bg: p.background,
+      grid: p.grid,
+      card: p.surface,
+      cardAlt: p.surfaceVariant,
+      border: p.outline,
+      text: p.foreground,
+      muted: p.muted,
+      edge: p.edge,
+      accent: p.accent,
+    );
+  }
 
   void _changed(String _) {
     _debounce?.cancel();
@@ -101,15 +121,16 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _openSettings() async {
-    final selected = await showDialog<RelationLineStyle>(
+    final selected = await showDialog<EditorSettingsValues>(
       context: context,
       builder: (_) => EditorSettingsDialog(
         lineStyle: _relationLineStyle,
-        onLineStyleChanged: (value) => Navigator.pop(context, value),
+        themeSettings: widget.themeSettings,
       ),
     );
     if (selected != null && mounted) {
-      setState(() => _relationLineStyle = selected);
+      setState(() => _relationLineStyle = selected.lineStyle);
+      widget.onSettingsChanged(selected.themeSettings, selected.lineStyle);
     }
   }
 
@@ -177,10 +198,6 @@ class _EditorPageState extends State<EditorPage> {
               onPressed: c.selection.isEmpty ? null : _pickColor,
             ),
           ),
-          IconButton(
-              tooltip: 'Toggle theme',
-              icon: const Icon(Icons.brightness_6_outlined),
-              onPressed: widget.onToggleTheme),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../domain/entities/dbml_issue.dart' show DbmlIssue;
+import '../app/theme_settings.dart';
 
 const kMonoFonts = <String>[
   'Consolas',
@@ -103,6 +104,17 @@ class _Syn {
   const _Syn(this.comment, this.string, this.keyword, this.type, this.setting,
       this.number, this.op, this.color);
   final Color comment, string, keyword, type, setting, number, op, color;
+
+  factory _Syn.from(DbmlSyntaxColors colors) => _Syn(
+        colors.comment,
+        colors.string,
+        colors.keyword,
+        colors.type,
+        colors.setting,
+        colors.number,
+        colors.op,
+        colors.color,
+      );
 
   TextStyle of(_T t) => switch (t) {
         _T.comment => TextStyle(color: comment, fontStyle: FontStyle.italic),
@@ -337,9 +349,12 @@ class DbmlTextController extends TextEditingController {
     final t = text;
     final base = style ?? const TextStyle();
     if (t.isEmpty) return TextSpan(style: base, text: '');
-    final syn = Theme.of(context).brightness == Brightness.dark
-        ? _Syn.dark
-        : _Syn.light;
+    final configured = Theme.of(context).extension<DbmlEditorTheme>();
+    final syn = configured == null
+        ? (Theme.of(context).brightness == Brightness.dark
+            ? _Syn.dark
+            : _Syn.light)
+        : _Syn.from(configured.syntax);
     final enums = {for (final m in _enumRe.allMatches(t)) m.group(1)!};
     final segs = _scan(t, enums);
     final errs = _errorRanges(t);

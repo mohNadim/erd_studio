@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../controllers/erd_controller.dart';
 import '../canvas/erd_painter.dart';
 import '../../application/export/erd_export_service.dart';
+import '../app/theme_settings.dart';
 
 // ───────────────────────────── table color ─────────────────────────────
 
@@ -194,49 +195,446 @@ class EditorSettingsDialog extends StatelessWidget {
   const EditorSettingsDialog({
     super.key,
     required this.lineStyle,
-    required this.onLineStyleChanged,
+    required this.themeSettings,
   });
 
   final RelationLineStyle lineStyle;
-  final ValueChanged<RelationLineStyle> onLineStyleChanged;
+  final AppThemeSettings themeSettings;
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Settings'),
-      content: SizedBox(
-        width: 340,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Relationship lines'),
-            const SizedBox(height: 8),
-            SegmentedButton<RelationLineStyle>(
-              segments: const [
-                ButtonSegment(
-                  value: RelationLineStyle.curved,
-                  label: Text('Curved'),
-                  icon: Icon(Icons.timeline),
-                ),
-                ButtonSegment(
-                  value: RelationLineStyle.orthogonal,
-                  label: Text('Orthogonal'),
-                  icon: Icon(Icons.turn_right),
-                ),
-              ],
-              selected: {lineStyle},
-              onSelectionChanged: (selection) {
-                if (selection.isNotEmpty) {
-                  onLineStyleChanged(selection.first);
-                }
-              },
+  Widget build(BuildContext context) => _SettingsHome(
+        lineStyle: lineStyle,
+        themeSettings: themeSettings,
+      );
+}
+
+class EditorSettingsValues {
+  const EditorSettingsValues(this.lineStyle, this.themeSettings);
+
+  final RelationLineStyle lineStyle;
+  final AppThemeSettings themeSettings;
+}
+
+class _SettingsHome extends StatefulWidget {
+  const _SettingsHome({
+    required this.lineStyle,
+    required this.themeSettings,
+  });
+  final RelationLineStyle lineStyle;
+  final AppThemeSettings themeSettings;
+
+  @override
+  State<_SettingsHome> createState() => _SettingsHomeState();
+}
+
+class _SettingsHomeState extends State<_SettingsHome> {
+  late RelationLineStyle lineStyle = widget.lineStyle;
+  late AppThemeSettings themeSettings = widget.themeSettings;
+
+  Future<void> _openTheme() async {
+    final result = await showDialog<EditorSettingsValues>(
+      context: context,
+      builder: (_) => _EditorSettingsDialogContent(
+        lineStyle: lineStyle,
+        themeSettings: themeSettings,
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        themeSettings = result.themeSettings;
+        lineStyle = result.lineStyle;
+      });
+    }
+  }
+
+  Future<void> _openRelations() async {
+    final result = await showDialog<RelationLineStyle>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Relationship lines'),
+        content: SegmentedButton<RelationLineStyle>(
+          segments: const [
+            ButtonSegment(
+              value: RelationLineStyle.curved,
+              label: Text('Curved'),
+              icon: Icon(Icons.timeline),
+            ),
+            ButtonSegment(
+              value: RelationLineStyle.orthogonal,
+              label: Text('Orthogonal'),
+              icon: Icon(Icons.turn_right),
             ),
           ],
+          selected: {lineStyle},
+          onSelectionChanged: (value) => Navigator.pop(context, value.first),
         ),
       ),
     );
+    if (result != null) setState(() => lineStyle = result);
   }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Settings'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: const Text('Theme'),
+                subtitle: Text(themeSettings.preset.label),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openTheme,
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_tree_outlined),
+                title: const Text('Relationship lines'),
+                subtitle: Text(lineStyle == RelationLineStyle.curved
+                    ? 'Curved'
+                    : 'Orthogonal'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openRelations,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              EditorSettingsValues(lineStyle, themeSettings),
+            ),
+            child: const Text('Done'),
+          ),
+        ],
+      );
+}
+
+class _EditorSettingsDialogContent extends StatefulWidget {
+  const _EditorSettingsDialogContent({
+    required this.lineStyle,
+    required this.themeSettings,
+  });
+
+  final RelationLineStyle lineStyle;
+  final AppThemeSettings themeSettings;
+
+  @override
+  State<_EditorSettingsDialogContent> createState() =>
+      _EditorSettingsDialogContentState();
+}
+
+class _EditorSettingsDialogContentState
+    extends State<_EditorSettingsDialogContent> {
+  late RelationLineStyle lineStyle = widget.lineStyle;
+  late AppThemeSettings themeSettings = widget.themeSettings;
+
+  void _selectPreset(AppThemePreset preset) {
+    setState(() => themeSettings =
+        AppThemeSettings(preset: preset, palette: palettes[preset]));
+  }
+
+  Future<void> _editColor(
+      String label, Color current, void Function(Color) onChanged) async {
+    final color = await showDialog<Color>(
+      context: context,
+      builder: (_) => _ThemeColorDialog(label: label, initial: current),
+    );
+    if (color != null) setState(() => onChanged(color));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = themeSettings.resolvedPalette;
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+      title: Row(children: [
+        const Expanded(child: Text('Settings')),
+        IconButton(
+          tooltip: 'Reset theme',
+          icon: const Icon(Icons.restart_alt),
+          onPressed: () => setState(() => themeSettings =
+              AppThemeSettings(preset: AppThemePreset.defaultTheme)),
+        ),
+      ]),
+      content: SizedBox(
+        width: 620,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Theme gallery',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 10),
+              GridView.count(
+                crossAxisCount: 3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 2.25,
+                children: [
+                  for (final preset in AppThemePreset.values)
+                    _ThemeCard(
+                      preset: preset,
+                      palette: palettes[preset]!,
+                      selected: themeSettings.preset == preset &&
+                          themeSettings.palette == palettes[preset],
+                      onTap: () => _selectPreset(preset),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Text('Customize every visual layer',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _ColorField(
+                      'Background',
+                      p.background,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(background: c))),
+                  _ColorField(
+                      'Panels',
+                      p.surface,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(surface: c))),
+                  _ColorField(
+                      'Panel variants',
+                      p.surfaceVariant,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(surfaceVariant: c))),
+                  _ColorField(
+                      'Borders',
+                      p.outline,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(outline: c))),
+                  _ColorField(
+                      'Text',
+                      p.foreground,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(foreground: c))),
+                  _ColorField(
+                      'Secondary text',
+                      p.muted,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(muted: c))),
+                  _ColorField(
+                      'Grid',
+                      p.grid,
+                      (c) => themeSettings =
+                          themeSettings.copyWith(palette: p.copyWith(grid: c))),
+                  _ColorField(
+                      'Relations',
+                      p.edge,
+                      (c) => themeSettings =
+                          themeSettings.copyWith(palette: p.copyWith(edge: c))),
+                  _ColorField(
+                      'Accent',
+                      p.accent,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(accent: c))),
+                  _ColorField(
+                      'Comments',
+                      p.syntax.comment,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(
+                              syntax: p.syntax.copyWith(comment: c)))),
+                  _ColorField(
+                      'Strings',
+                      p.syntax.string,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(
+                              syntax: p.syntax.copyWith(string: c)))),
+                  _ColorField(
+                      'Keywords',
+                      p.syntax.keyword,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(
+                              syntax: p.syntax.copyWith(keyword: c)))),
+                  _ColorField(
+                      'Types',
+                      p.syntax.type,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette:
+                              p.copyWith(syntax: p.syntax.copyWith(type: c)))),
+                  _ColorField(
+                      'Settings',
+                      p.syntax.setting,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(
+                              syntax: p.syntax.copyWith(setting: c)))),
+                  _ColorField(
+                      'Numbers',
+                      p.syntax.number,
+                      (c) => themeSettings = themeSettings.copyWith(
+                          palette: p.copyWith(
+                              syntax: p.syntax.copyWith(number: c)))),
+                ].map((field) {
+                  return InkWell(
+                    onTap: () => _editColor(field.label, field.color,
+                        (color) => field.onChanged(color)),
+                    borderRadius: BorderRadius.circular(8),
+                    child: field,
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(
+            context,
+            EditorSettingsValues(lineStyle, themeSettings),
+          ),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ColorField extends StatelessWidget {
+  const _ColorField(this.label, this.color, this.onChanged);
+  final String label;
+  final Color color;
+  final ValueChanged<Color> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 190,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.white24),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label)),
+            const Icon(Icons.edit_outlined, size: 16),
+          ]),
+        ),
+      );
+}
+
+class _ThemeCard extends StatelessWidget {
+  const _ThemeCard({
+    required this.preset,
+    required this.palette,
+    required this.selected,
+    required this.onTap,
+  });
+  final AppThemePreset preset;
+  final AppThemePalette palette;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: palette.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected ? palette.accent : palette.outline,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Row(children: [
+            Icon(preset.icon, color: palette.accent, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(preset.label,
+                  style: TextStyle(
+                      color: palette.foreground, fontWeight: FontWeight.w600)),
+            ),
+            Container(width: 12, height: 12, color: palette.accent),
+            const SizedBox(width: 4),
+            Container(width: 12, height: 12, color: palette.edge),
+          ]),
+        ),
+      );
+}
+
+class _ThemeColorDialog extends StatefulWidget {
+  const _ThemeColorDialog({required this.label, required this.initial});
+  final String label;
+  final Color initial;
+
+  @override
+  State<_ThemeColorDialog> createState() => _ThemeColorDialogState();
+}
+
+class _ThemeColorDialogState extends State<_ThemeColorDialog> {
+  late HSVColor color = HSVColor.fromColor(widget.initial);
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.label),
+        content: SizedBox(
+          width: 320,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              height: 80,
+              decoration: BoxDecoration(
+                color: color.toColor(),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            const SizedBox(height: 18),
+            _hueSlider(),
+            _valueSlider(),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, color.toColor()),
+              child: const Text('Apply')),
+        ],
+      );
+
+  Widget _hueSlider() => Slider(
+        value: color.hue,
+        min: 0,
+        max: 360,
+        label: 'Hue',
+        activeColor: color.toColor(),
+        onChanged: (value) => setState(() => color = color.withHue(value)),
+      );
+
+  Widget _valueSlider() => Slider(
+        value: color.value,
+        label: 'Brightness',
+        onChanged: (value) => setState(() => color = color.withValue(value)),
+      );
 }
 
 String colorToHex(Color c) =>
