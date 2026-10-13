@@ -110,7 +110,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   Future<void> _createStickyNote() async {
-    final draft = await showDialog<StickyNoteDraft>(
+    final draft = await showDialog<StickyNoteDraftValues>(
       context: context,
       builder: (_) => const StickyNoteDialog(),
     );

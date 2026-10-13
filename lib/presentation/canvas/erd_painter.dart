@@ -241,17 +241,37 @@ class ErdPainter extends CustomPainter {
     final a = c.tableRect(r.fromTable), b = c.tableRect(r.toTable);
     if (a == null || b == null) return;
     if (!a.expandToInclude(b).overlaps(cull)) return;
-    var fromRight = true, toRight = true;
-    if (a.right + 40 <= b.left) {
-      toRight = false;
-    } else if (b.right + 40 <= a.left) {
-      fromRight = false;
+    final horizontal = (b.center.dx - a.center.dx).abs() >=
+        (b.center.dy - a.center.dy).abs();
+    late Offset p1, p2, d1, d2;
+    if (horizontal) {
+      final fromRight = b.center.dx >= a.center.dx;
+      final toRight = !fromRight;
+      p1 = Offset(
+        fromRight ? a.right : a.left,
+        _colY(r.fromTable, r.fromColumn),
+      );
+      p2 = Offset(
+        toRight ? b.right : b.left,
+        _colY(r.toTable, r.toColumn),
+      );
+      d1 = Offset(fromRight ? 1 : -1, 0);
+      d2 = Offset(toRight ? 1 : -1, 0);
+    } else {
+      final fromBottom = b.center.dy >= a.center.dy;
+      final toBottom = !fromBottom;
+      p1 = Offset(
+        _colX(r.fromTable, r.fromColumn),
+        fromBottom ? a.bottom : a.top,
+      );
+      p2 = Offset(
+        _colX(r.toTable, r.toColumn),
+        toBottom ? b.bottom : b.top,
+      );
+      d1 = Offset(0, fromBottom ? 1 : -1);
+      d2 = Offset(0, toBottom ? 1 : -1);
     }
-    final p1 =
-        Offset(fromRight ? a.right : a.left, _colY(r.fromTable, r.fromColumn));
-    final p2 = Offset(toRight ? b.right : b.left, _colY(r.toTable, r.toColumn));
-    final d1 = fromRight ? 1.0 : -1.0, d2 = toRight ? 1.0 : -1.0;
-    final k = max(60.0, (p2.dx - p1.dx).abs() / 2);
+    final k = max(60.0, (p2 - p1).distance / 2);
     final hot = _sel(r.fromTable) || _sel(r.toTable);
     final paint = Paint()
       ..style = PaintingStyle.stroke
@@ -261,37 +281,51 @@ class ErdPainter extends CustomPainter {
     final path = Path()..moveTo(p1.dx, p1.dy);
     if (relationLineStyle == RelationLineStyle.orthogonal) {
       const clearance = 40.0;
-      final x1 = p1.dx + d1 * clearance;
-      final x2 = p2.dx + d2 * clearance;
-      path
-        ..lineTo(x1, p1.dy)
-        ..lineTo(x2, p1.dy)
-        ..lineTo(x2, p2.dy)
-        ..lineTo(p2.dx, p2.dy);
+      final q1 = p1 + d1 * clearance;
+      final q2 = p2 + d2 * clearance;
+      if (horizontal) {
+        path
+          ..lineTo(q1.dx, q1.dy)
+          ..lineTo(q2.dx, q1.dy)
+          ..lineTo(q2.dx, q2.dy)
+          ..lineTo(p2.dx, p2.dy);
+      } else {
+        path
+          ..lineTo(q1.dx, q1.dy)
+          ..lineTo(q1.dx, q2.dy)
+          ..lineTo(q2.dx, q2.dy)
+          ..lineTo(p2.dx, p2.dy);
+      }
     } else {
-      path.cubicTo(
-        p1.dx + d1 * k,
-        p1.dy,
-        p2.dx + d2 * k,
-        p2.dy,
-        p2.dx,
-        p2.dy,
-      );
+      final q1 = p1 + d1 * k;
+      final q2 = p2 + d2 * k;
+      path.cubicTo(q1.dx, q1.dy, q2.dx, q2.dy, p2.dx, p2.dy);
     }
     canvas.drawPath(path, paint);
     _marker(canvas, p1, d1, r.fromMany, paint);
     _marker(canvas, p2, d2, r.toMany, paint);
   }
 
-  void _marker(Canvas c, Offset p, double d, bool many, Paint paint) {
+  double _colX(String table, String col) {
+    final t = c.byName[table];
+    final rect = c.tableRect(table)!;
+    final i = t == null ? -1 : t.columns.indexWhere((e) => e.name == col);
+    if (i < 0) return rect.center.dx;
+    return rect.left + ErdMetrics.pad + 30;
+  }
+
+  void _marker(Canvas c, Offset p, Offset d, bool many, Paint paint) {
     if (many) {
-      final apex = p + Offset(d * 14, 0);
-      c.drawLine(apex, p + const Offset(0, -7), paint);
-      c.drawLine(apex, p + const Offset(0, 7), paint);
+      final normal = Offset(-d.dy, d.dx);
+      final apex = p + d * 14;
+      c.drawLine(apex, p + normal * 7, paint);
+      c.drawLine(apex, p - normal * 7, paint);
       c.drawLine(apex, p, paint);
     } else {
       for (final o in [9.0, 14.0]) {
-        c.drawLine(p + Offset(d * o, -6), p + Offset(d * o, 6), paint);
+        final center = p + d * o;
+        final normal = Offset(-d.dy, d.dx) * 6;
+        c.drawLine(center - normal, center + normal, paint);
       }
     }
   }

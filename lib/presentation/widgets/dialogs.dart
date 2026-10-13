@@ -14,8 +14,8 @@ class ColorChoice {
   final bool reset;
 }
 
-class StickyNoteDraft {
-  const StickyNoteDraft({
+class StickyNoteDraftValues {
+  const StickyNoteDraftValues({
     required this.text,
     required this.color,
     required this.fontSize,
@@ -29,18 +29,36 @@ class StickyNoteDraft {
 }
 
 class StickyNoteDialog extends StatefulWidget {
-  const StickyNoteDialog({super.key});
+  const StickyNoteDialog({
+    super.key,
+    this.initial,
+    this.editing = false,
+  });
+
+  final StickyNoteDraftValues? initial;
+  final bool editing;
 
   @override
   State<StickyNoteDialog> createState() => _StickyNoteDialogState();
 }
 
 class _StickyNoteDialogState extends State<StickyNoteDialog> {
-  final text = TextEditingController();
-  int color = 0xFFFFF59D;
-  double fontSize = 14;
-  double width = 220;
-  double height = 140;
+  late final TextEditingController text;
+  late int color;
+  late double fontSize;
+  late double width;
+  late double height;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    text = TextEditingController(text: initial?.text);
+    color = initial?.color ?? 0xFFFFF59D;
+    fontSize = initial?.fontSize ?? 14;
+    width = initial?.size.width ?? 220;
+    height = initial?.size.height ?? 140;
+  }
 
   @override
   void dispose() {
@@ -50,7 +68,7 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('New sticky note'),
+        title: Text(widget.editing ? 'Edit sticky note' : 'New sticky note'),
         content: SizedBox(
           width: 340,
           child: Column(
@@ -146,7 +164,7 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
               if (value.isEmpty) return;
               Navigator.pop(
                 context,
-                StickyNoteDraft(
+                StickyNoteDraftValues(
                   text: value,
                   color: color,
                   fontSize: fontSize,
@@ -154,7 +172,7 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
                 ),
               );
             },
-            child: const Text('Create'),
+            child: Text(widget.editing ? 'Save' : 'Create'),
           ),
         ],
       );

@@ -50,6 +50,29 @@ abstract class _ErdControllerBase extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateNote(
+    String id, {
+    required String text,
+    required int color,
+    required double fontSize,
+    required Size size,
+  }) {
+    final note = notes.where((item) => item.id == id).firstOrNull;
+    if (note == null) return;
+    note
+      ..text = text
+      ..color = color
+      ..fontSize = fontSize
+      ..size = size;
+    notifyListeners();
+  }
+
+  void deleteNote(String id) {
+    notes.removeWhere((note) => note.id == id);
+    notePos.remove(id);
+    notifyListeners();
+  }
+
   String nextNoteId() => 'note-${_nextNoteId++}';
 }
 

@@ -11,6 +11,11 @@ extension _EditorCanvasInteraction on _EditorPageState {
     canvasFocus.requestFocus();
     final world = c.screenToWorld(event.localPosition);
     if (event.buttons & kSecondaryMouseButton != 0) {
+      final note = c.hitNote(world);
+      if (note != null) {
+        _noteMenu(event.position, note);
+        return;
+      }
       final name = c.hit(world);
       if (name != null) {
         if (!c.selection.contains(name)) c.setSelection({name});
@@ -86,7 +91,12 @@ extension _EditorCanvasInteraction on _EditorPageState {
           _lastPrimaryTapWorld != null &&
           (_lastPrimaryTapWorld! - world).distance <= 8 / c.scale;
       if (isDoubleTap) {
-        _renameAt(world);
+        final note = c.hitNote(world);
+        if (note != null) {
+          _editNote(note);
+        } else {
+          _renameAt(world);
+        }
         _lastPrimaryTap = null;
         _lastPrimaryTapWorld = null;
       } else {
@@ -97,6 +107,50 @@ extension _EditorCanvasInteraction on _EditorPageState {
     _primaryPointerDown = false;
     _draggedNoteId = null;
     _drag = _Drag.none;
+  }
+
+  Future<void> _editNote(StickyNoteModel note) async {
+    final draft = await showDialog<StickyNoteDraftValues>(
+      context: context,
+      builder: (_) => StickyNoteDialog(
+        editing: true,
+        initial: StickyNoteDraftValues(
+          text: note.text,
+          color: note.color,
+          fontSize: note.fontSize,
+          size: note.size,
+        ),
+      ),
+    );
+    if (!mounted || draft == null) return;
+    c.updateNote(
+      note.id,
+      text: draft.text,
+      color: draft.color,
+      fontSize: draft.fontSize,
+      size: draft.size,
+    );
+  }
+
+  Future<void> _noteMenu(Offset global, StickyNoteModel note) async {
+    final size = MediaQuery.of(context).size;
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(global.dx, global.dy, 0, 0),
+        Offset.zero & size,
+      ),
+      items: const [
+        PopupMenuItem(value: 'edit', child: Text('Edit note…')),
+        PopupMenuItem(value: 'delete', child: Text('Delete note')),
+      ],
+    );
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      await _editNote(note);
+    } else if (action == 'delete') {
+      c.deleteNote(note.id);
+    }
   }
 
   Future<void> _renameAt(Offset world) async {
