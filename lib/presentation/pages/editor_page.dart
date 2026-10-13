@@ -44,10 +44,16 @@ class _EditorPageState extends State<EditorPage> {
   final vScroll = ScrollController();
   final editorFocus = FocusNode();
   final canvasFocus = FocusNode();
+  final _searchFocus = FocusNode();
+  final _searchController = TextEditingController();
+  final _replaceController = TextEditingController();
 
   Timer? _debounce;
   double _editorW = 440, _problemsH = 150, _editorVH = 400;
   bool _problemsOpen = true;
+  bool _searchOpen = false;
+  bool _replaceOpen = false;
+  int _searchMatchIndex = -1;
   late RelationLineStyle _relationLineStyle = widget.initialLineStyle;
   List<DbmlIssue> _shownIssues = const [];
 
@@ -87,6 +93,9 @@ class _EditorPageState extends State<EditorPage> {
     vScroll.dispose();
     editorFocus.dispose();
     canvasFocus.dispose();
+    _searchFocus.dispose();
+    _searchController.dispose();
+    _replaceController.dispose();
     super.dispose();
   }
 
@@ -214,14 +223,49 @@ class _EditorPageState extends State<EditorPage> {
         SizedBox(
           width: _editorW.clamp(240.0, maxEditor).toDouble(),
           child: Column(children: [
+            Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              color: cs.surfaceContainerLow,
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Search and replace (Ctrl/Cmd+F)',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.find_replace_outlined, size: 19),
+                    onPressed: _openSearch,
+                  ),
+                  IconButton(
+                    tooltip: 'Duplicate line (Ctrl/Cmd+D)',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.content_copy_outlined, size: 19),
+                    onPressed: _duplicateLine,
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: LayoutBuilder(builder: (_, cons) {
                 _editorVH = cons.maxHeight;
-                return CodeEditor(
-                  controller: text,
-                  onChanged: _changed,
-                  vScroll: vScroll,
-                  focusNode: editorFocus,
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: CodeEditor(
+                        controller: text,
+                        onChanged: _changed,
+                        vScroll: vScroll,
+                        focusNode: editorFocus,
+                        onSearch: _openSearch,
+                        onDuplicateLine: _duplicateLine,
+                      ),
+                    ),
+                    if (_searchOpen)
+                      Positioned(
+                        top: 4,
+                        right: 6,
+                        child: _searchBar(cs),
+                      ),
+                  ],
                 );
               }),
             ),
@@ -242,6 +286,333 @@ class _EditorPageState extends State<EditorPage> {
         Expanded(child: _canvas()),
       ]),
     );
+  }
+
+  Future<void> _openSearch() async {
+    if (!_searchOpen) {
+      final selection = text.selection;
+      if (selection.isValid && !selection.isCollapsed) {
+        _searchController.text = text.text.substring(
+          selection.start,
+          selection.end,
+        );
+      }
+    }
+    setState(() => _searchOpen = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocus.requestFocus();
+        _searchController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _searchController.text.length,
+        );
+      }
+    });
+  }
+
+  void _closeSearch() {
+    text.setSearchHighlight('', -1);
+    setState(() {
+      _searchOpen = false;
+      _replaceOpen = false;
+      _searchMatchIndex = -1;
+    });
+    editorFocus.requestFocus();
+  }
+
+  Widget _searchBar(ColorScheme cs) {
+    final query = _searchController.text;
+    final matches =
+        query.isEmpty ? const <int>[] : _matchOffsets(text.text, query);
+    return SizedBox(
+      width: 300,
+      child: Material(
+        color: cs.surfaceContainerHighest,
+        elevation: 6,
+        borderRadius: BorderRadius.circular(4),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          child: Focus(
+            onKeyEvent: (_, event) {
+              if (event is KeyDownEvent &&
+                  event.logicalKey == LogicalKeyboardKey.escape) {
+                _closeSearch();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        key: const ValueKey('editor-search-field'),
+                        autofocus: true,
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'Find',
+                          prefixIcon: const Icon(Icons.search, size: 16),
+                          suffixText: query.isEmpty
+                              ? null
+                              : matches.isEmpty
+                                  ? 'No results'
+                                  : '${_searchMatchIndex + 1}/${matches.length}',
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        onChanged: (_) {
+                          _searchMatchIndex = -1;
+                          _selectNextMatch(
+                            _searchController.text,
+                            fromStart: true,
+                          );
+                        },
+                        onSubmitted: (_) =>
+                            _selectNextMatch(_searchController.text),
+                      ),
+                    ),
+                    _searchIconButton(
+                      tooltip: 'Previous match',
+                      icon: Icons.keyboard_arrow_up,
+                      onPressed: query.isEmpty
+                          ? null
+                          : () => _selectNextMatch(query, direction: -1),
+                    ),
+                    _searchIconButton(
+                      tooltip: 'Next match',
+                      icon: Icons.keyboard_arrow_down,
+                      onPressed:
+                          query.isEmpty ? null : () => _selectNextMatch(query),
+                    ),
+                    _searchIconButton(
+                      tooltip: 'Toggle replace',
+                      icon: Icons.find_replace_outlined,
+                      onPressed: () =>
+                          setState(() => _replaceOpen = !_replaceOpen),
+                    ),
+                    _searchIconButton(
+                      tooltip: 'Close (Esc)',
+                      icon: Icons.close,
+                      onPressed: _closeSearch,
+                    ),
+                  ],
+                ),
+                if (_replaceOpen)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _replaceController,
+                          style: const TextStyle(fontSize: 13),
+                          decoration: const InputDecoration(
+                            hintText: 'Replace',
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                        ),
+                        onPressed: query.isEmpty ? null : _replaceCurrent,
+                        child: const Text('Replace'),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                        ),
+                        onPressed: query.isEmpty ? null : _replaceAllFromBar,
+                        child: const Text('All'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _searchIconButton({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      iconSize: 17,
+      icon: Icon(icon),
+      onPressed: onPressed,
+    );
+  }
+
+  List<int> _matchOffsets(String source, String query) {
+    final offsets = <int>[];
+    var offset = 0;
+    while (offset <= source.length - query.length) {
+      final match = source.indexOf(query, offset);
+      if (match < 0) break;
+      offsets.add(match);
+      offset = match + math.max(1, query.length);
+    }
+    return offsets;
+  }
+
+  void _selectNextMatch(
+    String query, {
+    int direction = 1,
+    bool fromStart = false,
+  }) {
+    if (query.isEmpty) {
+      text.setSearchHighlight('', -1);
+      return;
+    }
+    final matches = _matchOffsets(text.text, query);
+    if (matches.isEmpty) {
+      text.setSearchHighlight(query, -1);
+      return;
+    }
+    final selectedIndex =
+        text.selection.isValid ? matches.indexOf(text.selection.start) : -1;
+    if (fromStart) {
+      _searchMatchIndex = 0;
+    } else if (selectedIndex >= 0) {
+      _searchMatchIndex = selectedIndex + direction;
+      _searchMatchIndex %= matches.length;
+      if (_searchMatchIndex < 0) _searchMatchIndex += matches.length;
+    } else if (_searchMatchIndex < 0) {
+      _searchMatchIndex = direction > 0 ? 0 : matches.length - 1;
+    } else {
+      _searchMatchIndex = (_searchMatchIndex + direction) % matches.length;
+      if (_searchMatchIndex < 0) _searchMatchIndex += matches.length;
+    }
+    final offset = matches[_searchMatchIndex];
+    text.selection = TextSelection(
+      baseOffset: offset,
+      extentOffset: offset + query.length,
+    );
+    text.setSearchHighlight(query, offset);
+    if (mounted) {
+      setState(() {});
+      _revealSearchMatch(offset);
+    }
+  }
+
+  void _revealSearchMatch(int offset) {
+    if (!vScroll.hasClients) return;
+    final line = '\n'.allMatches(text.text.substring(0, offset)).length;
+    final target = line * kLineHeight;
+    final top = vScroll.offset;
+    final bottom = top + _editorVH;
+    const padding = 2 * kLineHeight;
+    final desired = target < top + padding
+        ? target - padding
+        : target + kLineHeight > bottom - padding
+            ? target - _editorVH + 3 * kLineHeight
+            : top;
+    final clamped =
+        desired.clamp(0.0, vScroll.position.maxScrollExtent).toDouble();
+    if ((clamped - vScroll.offset).abs() > 1) {
+      vScroll.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _replaceCurrent() {
+    final query = _searchController.text;
+    final selection = text.selection;
+    if (query.isEmpty ||
+        !selection.isValid ||
+        selection.textInside(text.text) != query) {
+      _selectNextMatch(query);
+      return;
+    }
+    final start = selection.start;
+    final updated = text.text.replaceRange(
+      start,
+      selection.end,
+      _replaceController.text,
+    );
+    final end = start + _replaceController.text.length;
+    text.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection(baseOffset: start, extentOffset: end),
+    );
+    _changed(updated);
+    setState(() {});
+  }
+
+  void _replaceAllFromBar() {
+    final count = _replaceAll(
+      _searchController.text,
+      _replaceController.text,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              count == 0 ? 'No matches found' : 'Replaced $count matches',
+            ),
+          ),
+        );
+      setState(() {});
+    }
+  }
+
+  int _replaceAll(String query, String replacement) {
+    if (query.isEmpty) return 0;
+    final matches = _matchOffsets(text.text, query);
+    if (matches.isEmpty) return 0;
+    final updated = text.text.replaceAll(query, replacement);
+    text.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: updated.length),
+    );
+    _changed(updated);
+    return matches.length;
+  }
+
+  void _duplicateLine() {
+    final selection = text.selection;
+    if (!selection.isValid ||
+        selection.start > selection.end ||
+        selection.end > text.text.length) {
+      return;
+    }
+    final lineStart = text.text.lastIndexOf('\n', selection.start - 1) + 1;
+    final lineEnd = text.text.indexOf('\n', selection.end);
+    final end = lineEnd < 0 ? text.text.length : lineEnd;
+    final line = text.text.substring(lineStart, end);
+    final insertion = '$line\n';
+    final updated = text.text.replaceRange(lineStart, lineStart, insertion);
+    final shift = insertion.length;
+    text.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection(
+        baseOffset: selection.start + shift,
+        extentOffset: selection.end + shift,
+      ),
+    );
+    _changed(updated);
   }
 
   Widget _canvas() {

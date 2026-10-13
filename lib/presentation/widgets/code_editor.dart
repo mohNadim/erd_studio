@@ -263,12 +263,30 @@ class DbmlTextController extends TextEditingController {
     decorationColor: Color(0xFFFF3B30),
     decorationThickness: 1.0,
   );
+  static const _searchStyle = TextStyle(
+    backgroundColor: Color(0x66F6C344),
+  );
+  static const _activeSearchStyle = TextStyle(
+    backgroundColor: Color(0xCCFF9800),
+    color: Colors.black,
+  );
 
   List<DbmlIssue> _issues = const [];
+  String _searchQuery = '';
+  int _activeSearchOffset = -1;
   List<DbmlIssue> get issues => _issues;
   set issues(List<DbmlIssue> v) {
     if (identical(v, _issues)) return;
     _issues = v;
+    notifyListeners();
+  }
+
+  void setSearchHighlight(String query, int activeOffset) {
+    if (_searchQuery == query && _activeSearchOffset == activeOffset) {
+      return;
+    }
+    _searchQuery = query;
+    _activeSearchOffset = activeOffset;
     notifyListeners();
   }
 
@@ -358,20 +376,52 @@ class DbmlTextController extends TextEditingController {
     final enums = {for (final m in _enumRe.allMatches(t)) m.group(1)!};
     final segs = _scan(t, enums);
     final errs = _errorRanges(t);
+    final searchRanges = <(int, int)>[];
+    if (_searchQuery.isNotEmpty) {
+      var searchOffset = 0;
+      while (searchOffset <= t.length - _searchQuery.length) {
+        final start = t.indexOf(_searchQuery, searchOffset);
+        if (start < 0) break;
+        searchRanges.add((start, start + _searchQuery.length));
+        searchOffset = start + math.max(1, _searchQuery.length);
+      }
+    }
     final kids = <InlineSpan>[];
 
     void add(int a, int b, TextStyle st) {
-      var p = a;
+      final boundaries = <int>{a, b};
       for (final r in errs) {
-        if (r.$2 <= p) continue;
-        if (r.$1 >= b) break;
-        final s0 = math.max(p, r.$1), e0 = math.min(b, r.$2);
-        if (s0 > p) kids.add(TextSpan(text: t.substring(p, s0), style: st));
-        kids.add(
-            TextSpan(text: t.substring(s0, e0), style: st.merge(_errStyle)));
-        p = e0;
+        if (r.$1 < b && r.$2 > a) {
+          boundaries
+            ..add(math.max(a, r.$1))
+            ..add(math.min(b, r.$2));
+        }
       }
-      if (p < b) kids.add(TextSpan(text: t.substring(p, b), style: st));
+      for (final r in searchRanges) {
+        if (r.$1 < b && r.$2 > a) {
+          boundaries
+            ..add(math.max(a, r.$1))
+            ..add(math.min(b, r.$2));
+        }
+      }
+      final points = boundaries.toList()..sort();
+      for (var i = 0; i < points.length - 1; i++) {
+        final start = points[i], end = points[i + 1];
+        if (start == end) continue;
+        var spanStyle = st;
+        if (errs.any((r) => r.$1 <= start && end <= r.$2)) {
+          spanStyle = spanStyle.merge(_errStyle);
+        }
+        final search = searchRanges.any((r) => r.$1 <= start && end <= r.$2);
+        if (search) {
+          spanStyle = spanStyle.merge(
+            _activeSearchOffset == start
+                ? _activeSearchStyle
+                : _searchStyle,
+          );
+        }
+        kids.add(TextSpan(text: t.substring(start, end), style: spanStyle));
+      }
     }
 
     var p = 0;
@@ -394,11 +444,15 @@ class CodeEditor extends StatefulWidget {
     required this.onChanged,
     required this.vScroll,
     required this.focusNode,
+    required this.onSearch,
+    required this.onDuplicateLine,
   });
   final DbmlTextController controller;
   final ValueChanged<String> onChanged;
   final ScrollController vScroll;
   final FocusNode focusNode;
+  final VoidCallback onSearch;
+  final VoidCallback onDuplicateLine;
 
   @override
   State<CodeEditor> createState() => _CodeEditorState();
@@ -478,6 +532,15 @@ class _CodeEditorState extends State<CodeEditor> {
 
   void _updateCompletions() {
     final c = widget.controller;
+    if (!widget.focusNode.hasFocus) {
+      if (_completionItems.isNotEmpty) {
+        setState(() {
+          _completionItems = const [];
+          _completionIndex = 0;
+        });
+      }
+      return;
+    }
     final offset = _usableSelection(c) ? c.selection.baseOffset : -1;
     if (offset < 0) {
       if (_completionItems.isNotEmpty) {
@@ -811,6 +874,14 @@ class _CodeEditorState extends State<CodeEditor> {
                     width: textW,
                     child: CallbackShortcuts(
                       bindings: {
+                        const SingleActivator(LogicalKeyboardKey.keyF,
+                            control: true): widget.onSearch,
+                        const SingleActivator(LogicalKeyboardKey.keyF,
+                            meta: true): widget.onSearch,
+                        const SingleActivator(LogicalKeyboardKey.keyD,
+                            control: true): widget.onDuplicateLine,
+                        const SingleActivator(LogicalKeyboardKey.keyD,
+                            meta: true): widget.onDuplicateLine,
                         const SingleActivator(LogicalKeyboardKey.tab):
                             _insertTab,
                         const SingleActivator(LogicalKeyboardKey.tab,
@@ -837,6 +908,7 @@ class _CodeEditorState extends State<CodeEditor> {
                               child: TextField(
                                 controller: widget.controller,
                                 focusNode: widget.focusNode,
+                                key: const ValueKey('dbml-editor-field'),
                                 onChanged: _handleChanged,
                                 maxLines: null,
                                 minLines: minLines,
