@@ -1,6 +1,46 @@
 part of 'editor_page.dart';
 
 extension _EditorCanvasInteraction on _EditorPageState {
+  MouseCursor get _canvasCursor {
+    if (_drag == _Drag.noteResize || _hoveringNoteResize) {
+      return SystemMouseCursors.resizeDownRight;
+    }
+    if (_drag == _Drag.note) {
+      return SystemMouseCursors.grabbing;
+    }
+    if (_hoveredNoteId != null) {
+      return SystemMouseCursors.grab;
+    }
+    return SystemMouseCursors.basic;
+  }
+
+  void _hoverCanvas(PointerHoverEvent event) {
+    _updateNoteHover(event.localPosition);
+  }
+
+  void _updateNoteHover(Offset localPosition) {
+    final world = c.screenToWorld(localPosition);
+    final note = c.hitNote(world);
+    if (note == null) {
+      _setNoteHover(null, false);
+      return;
+    }
+    final position = c.notePos[note.id];
+    if (position == null) return;
+    final handleSize = 16 / c.scale;
+    final inHandle = world.dx >= position.dx + note.size.width - handleSize &&
+        world.dy >= position.dy + note.size.height - handleSize;
+    _setNoteHover(note.id, inHandle);
+  }
+
+  void _setNoteHover(String? id, bool resize) {
+    if (_hoveredNoteId == id && _hoveringNoteResize == resize) return;
+    _setState(() {
+      _hoveredNoteId = id;
+      _hoveringNoteResize = resize;
+    });
+  }
+
   bool get _additive =>
       HardwareKeyboard.instance.isControlPressed ||
       HardwareKeyboard.instance.isMetaPressed ||
@@ -68,6 +108,7 @@ extension _EditorCanvasInteraction on _EditorPageState {
   }
 
   void _move(PointerMoveEvent event) {
+    _updateNoteHover(event.localPosition);
     if (event.delta.distance > 1) _pointerMoved = true;
     switch (_drag) {
       case _Drag.tables:
@@ -149,6 +190,10 @@ extension _EditorCanvasInteraction on _EditorPageState {
       ),
     );
     if (!mounted || draft == null) return;
+    if (draft.delete) {
+      c.deleteNote(note.id);
+      return;
+    }
     c.updateNote(
       note.id,
       text: draft.text,
@@ -175,6 +220,29 @@ extension _EditorCanvasInteraction on _EditorPageState {
     if (action == 'edit') {
       await _editNote(note);
     } else if (action == 'delete') {
+      await _confirmDeleteNote(note);
+    }
+  }
+
+  Future<void> _confirmDeleteNote(StickyNoteModel note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete sticky note?'),
+        content: const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (mounted && confirmed == true) {
       c.deleteNote(note.id);
     }
   }

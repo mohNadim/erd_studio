@@ -61,12 +61,16 @@ Color _autoColor(String name, bool dark) {
 class ErdPainter extends CustomPainter {
   ErdPainter(this.c, this.pal,
       {this.forExport = false,
-      this.relationLineStyle = RelationLineStyle.curved})
+      this.relationLineStyle = RelationLineStyle.curved,
+      this.hoveredNoteId,
+      this.activeNoteId})
       : super(repaint: c);
   final ErdController c;
   final ErdPalette pal;
   final bool forExport;
   final RelationLineStyle relationLineStyle;
+  final String? hoveredNoteId;
+  final String? activeNoteId;
 
   /// المسافة بين حافة الجدول والخط العمودي للعلاقة.
   static const double _clearance = 32.0;
@@ -149,12 +153,25 @@ class ErdPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = Colors.black.withAlpha(45));
-    final handle = Paint()..color = Colors.black.withAlpha(75);
-    canvas.drawLine(
-        rect.bottomRight - const Offset(14, 0), rect.bottomRight, handle);
-    canvas.drawLine(
-        rect.bottomRight - const Offset(0, 14), rect.bottomRight, handle);
-    final text = ErdText.lay(
+    final active = !forExport &&
+        (note.id == hoveredNoteId || note.id == activeNoteId);
+    if (active) {
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2 / c.scale
+          ..color = pal.accent,
+      );
+      final handle = Paint()
+        ..color = pal.accent
+        ..strokeWidth = 2 / c.scale;
+      canvas.drawLine(
+          rect.bottomRight - const Offset(14, 0), rect.bottomRight, handle);
+      canvas.drawLine(
+          rect.bottomRight - const Offset(0, 14), rect.bottomRight, handle);
+    }
+    final text = ErdText.layMultiline(
       note.text,
       TextStyle(
         color: fill.computeLuminance() > 0.55 ? Colors.black87 : Colors.white,

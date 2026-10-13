@@ -20,12 +20,14 @@ class StickyNoteDraftValues {
     required this.color,
     required this.fontSize,
     required this.size,
+    this.delete = false,
   });
 
   final String text;
   final int color;
   final double fontSize;
   final Size size;
+  final bool delete;
 }
 
 class StickyNoteDialog extends StatefulWidget {
@@ -76,7 +78,6 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
                 autofocus: true,
                 maxLines: 5,
                 decoration: const InputDecoration(
-                  labelText: 'Text',
                   hintText: 'Write a note…',
                   border: OutlineInputBorder(),
                 ),
@@ -127,6 +128,44 @@ class _StickyNoteDialogState extends State<StickyNoteDialog> {
           ),
         ),
         actions: [
+          if (widget.editing)
+            TextButton.icon(
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete sticky note?'),
+                    content: const Text(
+                      'This action cannot be undone.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true && mounted) {
+                  Navigator.pop(
+                    context,
+                    StickyNoteDraftValues(
+                      text: text.text.trim(),
+                      color: color,
+                      fontSize: fontSize,
+                      size: widget.initial?.size ?? const Size(220, 140),
+                      delete: true,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),

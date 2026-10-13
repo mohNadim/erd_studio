@@ -52,6 +52,8 @@ class _EditorPageState extends State<EditorPage> {
   String? _draggedNoteId;
   Offset? _noteResizeStart;
   Size? _noteResizeInitialSize;
+  String? _hoveredNoteId;
+  bool _hoveringNoteResize = false;
   Duration? _lastPrimaryTap;
   Offset? _lastPrimaryTapWorld;
 
@@ -249,26 +251,33 @@ class _EditorPageState extends State<EditorPage> {
           child: ClipRect(
             child: Stack(children: [
               Positioned.fill(
-                child: Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: _down,
-                  onPointerMove: _move,
-                  onPointerUp: _up,
-                  onPointerCancel: _up,
-                  onPointerSignal: _signal,
-                  onPointerPanZoomStart: (_) => _tpScale = 1,
-                  onPointerPanZoomUpdate: (e) {
-                    c.panBy(e.panDelta);
-                    final f = e.scale / _tpScale;
-                    _tpScale = e.scale;
-                    if (f != 1) c.zoomAt(e.localPosition, f);
-                  },
-                  child: CustomPaint(
-                    size: size,
-                    painter: ErdPainter(
-                      c,
-                      pal,
-                      relationLineStyle: _relationLineStyle,
+                child: MouseRegion(
+                  cursor: _canvasCursor,
+                  onHover: _hoverCanvas,
+                  onExit: (_) => _setNoteHover(null, false),
+                  child: Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: _down,
+                    onPointerMove: _move,
+                    onPointerUp: _up,
+                    onPointerCancel: _up,
+                    onPointerSignal: _signal,
+                    onPointerPanZoomStart: (_) => _tpScale = 1,
+                    onPointerPanZoomUpdate: (e) {
+                      c.panBy(e.panDelta);
+                      final f = e.scale / _tpScale;
+                      _tpScale = e.scale;
+                      if (f != 1) c.zoomAt(e.localPosition, f);
+                    },
+                    child: CustomPaint(
+                      size: size,
+                      painter: ErdPainter(
+                        c,
+                        pal,
+                        relationLineStyle: _relationLineStyle,
+                        hoveredNoteId: _hoveredNoteId,
+                        activeNoteId: _draggedNoteId,
+                      ),
                     ),
                   ),
                 ),
