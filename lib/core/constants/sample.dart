@@ -7,26 +7,26 @@ Table users [headercolor: #3B82F6] {
   created_at timestamp
 }
 
-Table products {
+Table products [headercolor: #3B82F6] {
   id integer [pk]
   name varchar(120) [not null]
   price decimal(10,2)
   category_id integer [ref: > categories.id]
 }
 
-Table categories {
+Table categories [headercolor: #3B82F6] {
   id integer [pk]
   name varchar
 }
 
-Table orders {
+Table orders [headercolor: #3B82F6] {
   id integer [pk]
   user_id integer [ref: > users.id]
   status varchar
   created_at timestamp
 }
 
-Table order_items {
+Table order_items [headercolor: #3B82F6] {
   order_id integer [pk]
   product_id integer [pk]
   quantity integer
