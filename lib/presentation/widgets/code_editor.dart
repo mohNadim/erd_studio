@@ -478,8 +478,8 @@ class _CodeEditorState extends State<CodeEditor> {
 
   void _updateCompletions() {
     final c = widget.controller;
-    final offset = c.selection.isValid ? c.selection.baseOffset : -1;
-    if (offset < 0 || offset > c.text.length) {
+    final offset = _usableSelection(c) ? c.selection.baseOffset : -1;
+    if (offset < 0) {
       if (_completionItems.isNotEmpty) {
         setState(() {
           _completionItems = const [];
@@ -608,6 +608,10 @@ class _CodeEditorState extends State<CodeEditor> {
 
   void _applyCompletion(String word) {
     final c = widget.controller;
+    if (!_usableSelection(c) ||
+        _completionPrefix.length > c.selection.baseOffset) {
+      return;
+    }
     final offset = c.selection.baseOffset;
     final start = offset - _completionPrefix.length;
     final value = c.text.replaceRange(start, offset, word);
@@ -623,7 +627,7 @@ class _CodeEditorState extends State<CodeEditor> {
   void _insertTab() {
     final c = widget.controller;
     final sel = c.selection;
-    if (!sel.isValid) return;
+    if (!_usableSelection(c)) return;
     final nt = c.text.replaceRange(sel.start, sel.end, '  ');
     c.value = TextEditingValue(
         text: nt, selection: TextSelection.collapsed(offset: sel.start + 2));
@@ -633,7 +637,7 @@ class _CodeEditorState extends State<CodeEditor> {
   void _outdent() {
     final c = widget.controller;
     final selection = c.selection;
-    if (!selection.isValid) return;
+    if (!_usableSelection(c)) return;
     final lineStart = c.text.lastIndexOf('\n', selection.start - 1) + 1;
     if (!c.text.substring(lineStart).startsWith('  ')) return;
     final value = c.text.replaceRange(lineStart, lineStart + 2, '');
@@ -658,11 +662,28 @@ class _CodeEditorState extends State<CodeEditor> {
     );
   }
 
+  bool _usableSelection(TextEditingController controller) {
+    final selection = controller.selection;
+    return selection.isValid &&
+        selection.start <= selection.end &&
+        selection.end <= controller.text.length;
+  }
+
   KeyEventResult _handleEditorKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final c = widget.controller;
     final selection = c.selection;
-    if (!selection.isValid) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (_completionItems.isNotEmpty) {
+        setState(() {
+          _completionItems = const [];
+          _completionIndex = 0;
+        });
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    if (!_usableSelection(c)) return KeyEventResult.ignored;
 
     if (_completionItems.isNotEmpty &&
         event.logicalKey == LogicalKeyboardKey.enter) {

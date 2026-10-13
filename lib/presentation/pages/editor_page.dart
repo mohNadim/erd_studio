@@ -261,10 +261,17 @@ class _EditorPageState extends State<EditorPage> {
               c.selectAll,
           const SingleActivator(LogicalKeyboardKey.keyA, meta: true):
               c.selectAll,
-          const SingleActivator(LogicalKeyboardKey.escape): c.clearSelection,
         },
         child: Focus(
           focusNode: canvasFocus,
+          onKeyEvent: (_, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              c.clearSelection();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
           child: ClipRect(
             child: Stack(children: [
               Positioned.fill(
