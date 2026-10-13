@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../controllers/erd_controller.dart';
+import '../canvas/erd_painter.dart';
 import '../../application/export/erd_export_service.dart';
 
 // ───────────────────────────── table color ─────────────────────────────
@@ -11,6 +12,55 @@ class ColorChoice {
         reset = true;
   final Color? color;
   final bool reset;
+}
+
+class EditorSettingsDialog extends StatelessWidget {
+  const EditorSettingsDialog({
+    super.key,
+    required this.lineStyle,
+    required this.onLineStyleChanged,
+  });
+
+  final RelationLineStyle lineStyle;
+  final ValueChanged<RelationLineStyle> onLineStyleChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Settings'),
+      content: SizedBox(
+        width: 340,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Relationship lines'),
+            const SizedBox(height: 8),
+            SegmentedButton<RelationLineStyle>(
+              segments: const [
+                ButtonSegment(
+                  value: RelationLineStyle.curved,
+                  label: Text('Curved'),
+                  icon: Icon(Icons.timeline),
+                ),
+                ButtonSegment(
+                  value: RelationLineStyle.orthogonal,
+                  label: Text('Orthogonal'),
+                  icon: Icon(Icons.turn_right),
+                ),
+              ],
+              selected: {lineStyle},
+              onSelectionChanged: (selection) {
+                if (selection.isNotEmpty) {
+                  onLineStyleChanged(selection.first);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 String colorToHex(Color c) =>

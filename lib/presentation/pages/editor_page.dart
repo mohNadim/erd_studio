@@ -20,7 +20,6 @@ part 'editor_file_actions.dart';
 part 'editor_canvas_interaction.dart';
 part 'editor_problems_view.dart';
 
-
 enum _Drag { none, tables, pan, marquee }
 
 class EditorPage extends StatefulWidget {
@@ -40,6 +39,7 @@ class _EditorPageState extends State<EditorPage> {
   Timer? _debounce;
   double _editorW = 440, _problemsH = 150, _editorVH = 400;
   bool _problemsOpen = true;
+  RelationLineStyle _relationLineStyle = RelationLineStyle.curved;
   List<DbmlIssue> _shownIssues = const [];
 
   _Drag _drag = _Drag.none;
@@ -94,6 +94,19 @@ class _EditorPageState extends State<EditorPage> {
         Timer(const Duration(milliseconds: 250), () => c.update(text.text));
   }
 
+  Future<void> _openSettings() async {
+    final selected = await showDialog<RelationLineStyle>(
+      context: context,
+      builder: (_) => EditorSettingsDialog(
+        lineStyle: _relationLineStyle,
+        onLineStyleChanged: (value) => Navigator.pop(context, value),
+      ),
+    );
+    if (selected != null && mounted) {
+      setState(() => _relationLineStyle = selected);
+    }
+  }
+
   // ───────────────────────────── build ─────────────────────────────
 
   @override
@@ -102,7 +115,7 @@ class _EditorPageState extends State<EditorPage> {
     final maxEditor = math.max(260.0, MediaQuery.of(context).size.width - 340);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DBML ERD Studio'),
+        title: const Text('Karasuno ERD Studio'),
         actions: [
           IconButton(
               tooltip: 'Open .dbml',
@@ -143,6 +156,11 @@ class _EditorPageState extends State<EditorPage> {
               tooltip: 'Toggle theme',
               icon: const Icon(Icons.brightness_6_outlined),
               onPressed: widget.onToggleTheme),
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _openSettings,
+          ),
         ],
       ),
       body: Row(children: [
@@ -217,7 +235,14 @@ class _EditorPageState extends State<EditorPage> {
                     _tpScale = e.scale;
                     if (f != 1) c.zoomAt(e.localPosition, f);
                   },
-                  child: CustomPaint(size: size, painter: ErdPainter(c, pal)),
+                  child: CustomPaint(
+                    size: size,
+                    painter: ErdPainter(
+                      c,
+                      pal,
+                      relationLineStyle: _relationLineStyle,
+                    ),
+                  ),
                 ),
               ),
               Positioned(
@@ -228,11 +253,12 @@ class _EditorPageState extends State<EditorPage> {
                     'Drag: pan · Wheel: zoom · Click: select · Ctrl/Shift+click: multi-select · '
                     'Shift+drag: box select · Right-click: color',
                     style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(ctx)
-                            .colorScheme
-                            .onSurfaceVariant
-                            .withAlpha(170)),
+                      fontSize: 11,
+                      color: Theme.of(ctx)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withAlpha(170),
+                    ),
                   ),
                 ),
               ),

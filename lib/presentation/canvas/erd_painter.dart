@@ -5,6 +5,8 @@ import '../controllers/erd_controller.dart';
 import '../../domain/entities/schema_models.dart';
 import '../../domain/services/erd_layout_service.dart';
 
+enum RelationLineStyle { curved, orthogonal }
+
 class ErdPalette {
   const ErdPalette({
     required this.dark,
@@ -52,14 +54,19 @@ Color _autoColor(String name, bool dark) {
   for (final c in name.codeUnits) {
     h = (h * 31 + c) & 0x7fffffff;
   }
-  return HSLColor.fromAHSL(1, (h % 360).toDouble(), 0.5, dark ? 0.36 : 0.42).toColor();
+  return HSLColor.fromAHSL(1, (h % 360).toDouble(), 0.5, dark ? 0.36 : 0.42)
+      .toColor();
 }
 
 class ErdPainter extends CustomPainter {
-  ErdPainter(this.c, this.pal, {this.forExport = false}) : super(repaint: c);
+  ErdPainter(this.c, this.pal,
+      {this.forExport = false,
+      this.relationLineStyle = RelationLineStyle.curved})
+      : super(repaint: c);
   final ErdController c;
   final ErdPalette pal;
   final bool forExport;
+  final RelationLineStyle relationLineStyle;
 
   bool _sel(String n) => !forExport && c.selection.contains(n);
 
@@ -109,7 +116,9 @@ class ErdPainter extends CustomPainter {
   /// Draws tables + relations in world coordinates (also used by PNG export).
   void paintWorld(Canvas canvas, Rect vis) {
     final cull = vis.inflate(240);
-    final fk = <String>{for (final r in c.schema.refs) '${r.fromTable}.${r.fromColumn}'};
+    final fk = <String>{
+      for (final r in c.schema.refs) '${r.fromTable}.${r.fromColumn}'
+    };
     for (final r in c.schema.refs) {
       _edge(canvas, r, cull);
     }
@@ -122,22 +131,27 @@ class ErdPainter extends CustomPainter {
 
   void _table(Canvas canvas, TableModel t, Rect r, Set<String> fk) {
     final sel = _sel(t.name);
-    final hc = t.headerColor != null ? Color(t.headerColor!) : _autoColor(t.name, pal.dark);
-    final onHeader = hc.computeLuminance() > 0.55 ? const Color(0xFF111827) : Colors.white;
+    final hc = t.headerColor != null
+        ? Color(t.headerColor!)
+        : _autoColor(t.name, pal.dark);
+    final onHeader =
+        hc.computeLuminance() > 0.55 ? const Color(0xFF111827) : Colors.white;
     final rr = RRect.fromRectAndRadius(r, const Radius.circular(10));
     canvas.drawRRect(rr.shift(const Offset(0, 3)),
         Paint()..color = Colors.black.withAlpha(pal.dark ? 90 : 38));
     canvas.drawRRect(rr, Paint()..color = pal.card);
     canvas.save();
     canvas.clipRRect(rr);
-    canvas.drawRect(
-        Rect.fromLTWH(r.left, r.top, r.width, ErdMetrics.headerH), Paint()..color = hc);
+    canvas.drawRect(Rect.fromLTWH(r.left, r.top, r.width, ErdMetrics.headerH),
+        Paint()..color = hc);
     final title = ErdText.lay(
         t.name,
         TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: onHeader),
         r.width - ErdMetrics.pad * 2);
-    title.paint(canvas,
-        Offset(r.left + ErdMetrics.pad, r.top + (ErdMetrics.headerH - title.height) / 2));
+    title.paint(
+        canvas,
+        Offset(r.left + ErdMetrics.pad,
+            r.top + (ErdMetrics.headerH - title.height) / 2));
     for (var i = 0; i < t.columns.length; i++) {
       final col = t.columns[i];
       final top = r.top + ErdMetrics.headerH + i * ErdMetrics.rowH;
@@ -158,17 +172,24 @@ class ErdPainter extends CustomPainter {
             const Radius.circular(4));
         final bc = badge == 'PK' ? pal.accent : pal.muted;
         canvas.drawRRect(br, Paint()..color = bc.withAlpha(51));
-        final bt = ErdText.lay(
-            badge, TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: bc));
-        bt.paint(canvas, Offset(br.left + (24 - bt.width) / 2, br.top + (16 - bt.height) / 2));
+        final bt = ErdText.lay(badge,
+            TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: bc));
+        bt.paint(
+            canvas,
+            Offset(
+                br.left + (24 - bt.width) / 2, br.top + (16 - bt.height) / 2));
       }
       final ty = ErdText.lay(col.type, ErdText.type(pal.muted));
-      ty.paint(canvas,
-          Offset(r.right - ErdMetrics.pad - ty.width, top + (ErdMetrics.rowH - ty.height) / 2));
+      ty.paint(
+          canvas,
+          Offset(r.right - ErdMetrics.pad - ty.width,
+              top + (ErdMetrics.rowH - ty.height) / 2));
       final nm = ErdText.lay(col.name, ErdText.name(pal.text, bold: col.pk),
           r.width - ty.width - ErdMetrics.pad * 3 - 34);
-      nm.paint(canvas,
-          Offset(r.left + ErdMetrics.pad + 30, top + (ErdMetrics.rowH - nm.height) / 2));
+      nm.paint(
+          canvas,
+          Offset(r.left + ErdMetrics.pad + 30,
+              top + (ErdMetrics.rowH - nm.height) / 2));
     }
     canvas.restore();
     canvas.drawRRect(
@@ -197,7 +218,8 @@ class ErdPainter extends CustomPainter {
     } else if (b.right + 40 <= a.left) {
       fromRight = false;
     }
-    final p1 = Offset(fromRight ? a.right : a.left, _colY(r.fromTable, r.fromColumn));
+    final p1 =
+        Offset(fromRight ? a.right : a.left, _colY(r.fromTable, r.fromColumn));
     final p2 = Offset(toRight ? b.right : b.left, _colY(r.toTable, r.toColumn));
     final d1 = fromRight ? 1.0 : -1.0, d2 = toRight ? 1.0 : -1.0;
     final k = max(60.0, (p2.dx - p1.dx).abs() / 2);
@@ -207,11 +229,27 @@ class ErdPainter extends CustomPainter {
       ..strokeWidth = hot ? 2.2 : 1.5
       ..strokeCap = StrokeCap.round
       ..color = hot ? pal.accent : pal.edge;
-    canvas.drawPath(
-        Path()
-          ..moveTo(p1.dx, p1.dy)
-          ..cubicTo(p1.dx + d1 * k, p1.dy, p2.dx + d2 * k, p2.dy, p2.dx, p2.dy),
-        paint);
+    final path = Path()..moveTo(p1.dx, p1.dy);
+    if (relationLineStyle == RelationLineStyle.orthogonal) {
+      const clearance = 40.0;
+      final x1 = p1.dx + d1 * clearance;
+      final x2 = p2.dx + d2 * clearance;
+      path
+        ..lineTo(x1, p1.dy)
+        ..lineTo(x2, p1.dy)
+        ..lineTo(x2, p2.dy)
+        ..lineTo(p2.dx, p2.dy);
+    } else {
+      path.cubicTo(
+        p1.dx + d1 * k,
+        p1.dy,
+        p2.dx + d2 * k,
+        p2.dy,
+        p2.dx,
+        p2.dy,
+      );
+    }
+    canvas.drawPath(path, paint);
     _marker(canvas, p1, d1, r.fromMany, paint);
     _marker(canvas, p2, d2, r.toMany, paint);
   }
@@ -230,5 +268,6 @@ class ErdPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant ErdPainter old) => old.pal != pal;
+  bool shouldRepaint(covariant ErdPainter old) =>
+      old.pal != pal || old.relationLineStyle != relationLineStyle;
 }
