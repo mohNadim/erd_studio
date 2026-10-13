@@ -397,6 +397,11 @@ class _CodeEditorState extends State<CodeEditor> {
   String _completionPrefix = '';
   List<String> _completionItems = const [];
   int _completionIndex = 0;
+  double _viewportHeight = 0;
+  bool _completionScrollScheduled = false;
+
+  static const _completionItemHeight = 37.0;
+  static const _completionBottomSpace = 8 * _completionItemHeight + 16;
 
   static const _strut = StrutStyle(
     fontSize: kEditorFontSize,
@@ -506,6 +511,7 @@ class _CodeEditorState extends State<CodeEditor> {
         _completionItems = next;
         _completionIndex = 0;
       });
+      _scheduleCompletionScroll();
     }
   }
 
@@ -537,10 +543,49 @@ class _CodeEditorState extends State<CodeEditor> {
     final lineStart = c.text.lastIndexOf('\n', offset - 1) + 1;
     final column = offset - lineStart;
     final line = '\n'.allMatches(c.text.substring(0, offset)).length;
+    final caretTop = 12 + (line + 1) * kLineHeight;
+    final menuHeight = _completionItems.length * _completionItemHeight;
+    final visibleBottom = widget.vScroll.hasClients
+        ? widget.vScroll.offset + _viewportHeight
+        : _viewportHeight;
+    final top = caretTop + menuHeight > visibleBottom - 8 &&
+            caretTop - menuHeight >
+                (widget.vScroll.hasClients ? widget.vScroll.offset + 8 : 8)
+        ? caretTop - menuHeight
+        : caretTop;
     return Offset(
       10 + column * _cw,
-      12 + (line + 1) * kLineHeight,
+      top,
     );
+  }
+
+  void _scheduleCompletionScroll() {
+    if (_completionItems.isEmpty || _completionScrollScheduled) return;
+    _completionScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _completionScrollScheduled = false;
+      if (!mounted || _completionItems.isEmpty || !widget.vScroll.hasClients) {
+        return;
+      }
+      final top = _completionPosition().dy;
+      final bottom = top + _completionItems.length * _completionItemHeight;
+      final viewTop = widget.vScroll.offset + 8;
+      final viewBottom = widget.vScroll.offset + _viewportHeight - 8;
+      final target = bottom > viewBottom
+          ? widget.vScroll.offset + bottom - viewBottom
+          : top < viewTop
+              ? widget.vScroll.offset - (viewTop - top)
+              : widget.vScroll.offset;
+      final clamped =
+          target.clamp(0.0, widget.vScroll.position.maxScrollExtent).toDouble();
+      if ((clamped - widget.vScroll.offset).abs() > 1) {
+        widget.vScroll.animateTo(
+          clamped,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   bool _sameItems(List<String> a, List<String> b) =>
@@ -692,6 +737,7 @@ class _CodeEditorState extends State<CodeEditor> {
     final cs = Theme.of(context).colorScheme;
     final errLines = {for (final i in widget.controller.issues) i.line};
     return LayoutBuilder(builder: (ctx, cons) {
+      _viewportHeight = cons.maxHeight;
       final minLines =
           math.max(1, ((cons.maxHeight - 24) / kLineHeight).floor());
       final gutterW = math.max(46.0, '$_lines'.length * _cw + 30);
@@ -702,122 +748,132 @@ class _CodeEditorState extends State<CodeEditor> {
           color: const Color(0xFFFF3B30), fontWeight: FontWeight.w700);
       return ColoredBox(
         color: cs.surface,
-        child: SingleChildScrollView(
-          controller: widget.vScroll,
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: gutterW,
-              padding: const EdgeInsets.fromLTRB(0, 12, 10, 12),
-              color: cs.surfaceContainerLow,
-              child: Text.rich(
-                TextSpan(style: numStyle, children: [
-                  for (var i = 1; i <= _lines; i++)
-                    TextSpan(
-                        text: i == _lines ? '$i' : '$i\n',
-                        style: errLines.contains(i) ? errNum : null),
-                ]),
-                textAlign: TextAlign.right,
-                strutStyle: _strut,
+        child: ClipRect(
+          child: SingleChildScrollView(
+            controller: widget.vScroll,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: gutterW,
+                padding: const EdgeInsets.fromLTRB(0, 12, 10, 12),
+                color: cs.surfaceContainerLow,
+                child: Text.rich(
+                  TextSpan(style: numStyle, children: [
+                    for (var i = 1; i <= _lines; i++)
+                      TextSpan(
+                          text: i == _lines ? '$i' : '$i\n',
+                          style: errLines.contains(i) ? errNum : null),
+                  ]),
+                  textAlign: TextAlign.right,
+                  strutStyle: _strut,
+                ),
               ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                controller: _h,
-                child: SizedBox(
-                  width: textW,
-                  child: CallbackShortcuts(
-                    bindings: {
-                      const SingleActivator(LogicalKeyboardKey.tab): _insertTab,
-                      const SingleActivator(LogicalKeyboardKey.tab,
-                          shift: true): _outdent,
-                      if (_completionItems.isNotEmpty) ...{
-                        const SingleActivator(LogicalKeyboardKey.arrowDown):
-                            () => _moveCompletion(1),
-                        const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-                            _moveCompletion(-1),
-                        const SingleActivator(LogicalKeyboardKey.enter):
-                            _acceptCompletion,
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  controller: _h,
+                  child: SizedBox(
+                    width: textW,
+                    child: CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(LogicalKeyboardKey.tab):
+                            _insertTab,
+                        const SingleActivator(LogicalKeyboardKey.tab,
+                            shift: true): _outdent,
+                        if (_completionItems.isNotEmpty) ...{
+                          const SingleActivator(LogicalKeyboardKey.arrowDown):
+                              () => _moveCompletion(1),
+                          const SingleActivator(LogicalKeyboardKey.arrowUp):
+                              () => _moveCompletion(-1),
+                          const SingleActivator(LogicalKeyboardKey.enter):
+                              _acceptCompletion,
+                        },
                       },
-                    },
-                    child: Focus(
-                      onKeyEvent: _handleEditorKey,
-                      child: Stack(
-                        children: [
-                          TextField(
-                            controller: widget.controller,
-                            focusNode: widget.focusNode,
-                            onChanged: _handleChanged,
-                            maxLines: null,
-                            minLines: minLines,
-                            keyboardType: TextInputType.multiline,
-                            style: _mono.copyWith(color: cs.onSurface),
-                            strutStyle: _strut,
-                            cursorColor: cs.primary,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            smartDashesType: SmartDashesType.disabled,
-                            smartQuotesType: SmartQuotesType.disabled,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              contentPadding:
-                                  EdgeInsets.fromLTRB(10, 12, 16, 12),
-                            ),
-                          ),
-                          if (_completionItems.isNotEmpty)
-                            Positioned(
-                              left: _completionPosition().dx,
-                              top: _completionPosition().dy,
-                              child: Material(
-                                color: cs.surfaceContainerHighest,
-                                shadowColor: Colors.black.withAlpha(180),
-                                elevation: 12,
-                                borderRadius: BorderRadius.circular(6),
-                                clipBehavior: Clip.antiAlias,
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                      minWidth: 190, maxWidth: 280),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      for (var i = 0;
-                                          i < _completionItems.length;
-                                          i++)
-                                        InkWell(
-                                          onTap: () => _applyCompletion(
-                                              _completionItems[i]),
-                                          child: ColoredBox(
-                                            color: i == _completionIndex
-                                                ? cs.primary.withAlpha(45)
-                                                : Colors.transparent,
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 7),
-                                              child: Text(
-                                                _completionItems[i],
-                                                style: _mono.copyWith(
-                                                    color: cs.onSurface),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                      child: Focus(
+                        onKeyEvent: _handleEditorKey,
+                        child: Stack(
+                          children: [
+                            Padding(
+                              padding: EdgeInsets.only(
+                                bottom: _completionItems.isEmpty
+                                    ? 0
+                                    : _completionBottomSpace,
+                              ),
+                              child: TextField(
+                                controller: widget.controller,
+                                focusNode: widget.focusNode,
+                                onChanged: _handleChanged,
+                                maxLines: null,
+                                minLines: minLines,
+                                keyboardType: TextInputType.multiline,
+                                style: _mono.copyWith(color: cs.onSurface),
+                                strutStyle: _strut,
+                                cursorColor: cs.primary,
+                                autocorrect: false,
+                                enableSuggestions: false,
+                                smartDashesType: SmartDashesType.disabled,
+                                smartQuotesType: SmartQuotesType.disabled,
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  contentPadding:
+                                      EdgeInsets.fromLTRB(10, 12, 16, 12),
                                 ),
                               ),
                             ),
-                        ],
+                            if (_completionItems.isNotEmpty)
+                              Positioned(
+                                left: _completionPosition().dx,
+                                top: _completionPosition().dy,
+                                child: Material(
+                                  color: cs.surfaceContainerHighest,
+                                  shadowColor: Colors.black.withAlpha(180),
+                                  elevation: 12,
+                                  borderRadius: BorderRadius.circular(6),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                        minWidth: 190, maxWidth: 280),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        for (var i = 0;
+                                            i < _completionItems.length;
+                                            i++)
+                                          InkWell(
+                                            onTap: () => _applyCompletion(
+                                                _completionItems[i]),
+                                            child: ColoredBox(
+                                              color: i == _completionIndex
+                                                  ? cs.primary.withAlpha(45)
+                                                  : Colors.transparent,
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 7),
+                                                child: Text(
+                                                  _completionItems[i],
+                                                  style: _mono.copyWith(
+                                                      color: cs.onSurface),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
       );
     });
