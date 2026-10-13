@@ -1,9 +1,9 @@
 import 'dart:math';
 import 'dart:ui' show PointMode;
 import 'package:flutter/material.dart';
-import 'erd_controller.dart';
-import 'layout.dart';
-import 'models.dart';
+import '../controllers/erd_controller.dart';
+import '../../domain/entities/schema_models.dart';
+import '../../domain/services/erd_layout_service.dart';
 
 class ErdPalette {
   const ErdPalette({

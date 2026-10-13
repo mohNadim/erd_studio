@@ -4,8 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'erd_controller.dart';
-import 'erd_painter.dart';
+import '../../presentation/controllers/erd_controller.dart';
+import '../../presentation/canvas/erd_painter.dart';
 
 enum ExportFormat { png, pdf }
 
