@@ -13,6 +13,7 @@ import '../widgets/dialogs.dart';
 import '../controllers/erd_controller.dart';
 import '../canvas/erd_painter.dart';
 import '../../application/export/erd_export_service.dart';
+import '../../domain/entities/schema_models.dart';
 import '../../domain/services/erd_layout_service.dart';
 import '../../domain/services/dbml_source_edit_service.dart';
 
@@ -20,7 +21,7 @@ part 'editor_file_actions.dart';
 part 'editor_canvas_interaction.dart';
 part 'editor_problems_view.dart';
 
-enum _Drag { none, tables, pan, marquee }
+enum _Drag { none, tables, note, pan, marquee }
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key, required this.onToggleTheme});
@@ -48,6 +49,7 @@ class _EditorPageState extends State<EditorPage> {
   double _tpScale = 1;
   bool _pointerMoved = false;
   bool _primaryPointerDown = false;
+  String? _draggedNoteId;
   Duration? _lastPrimaryTap;
   Offset? _lastPrimaryTapWorld;
 
@@ -107,6 +109,25 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
+  Future<void> _createStickyNote() async {
+    final draft = await showDialog<StickyNoteDraft>(
+      context: context,
+      builder: (_) => const StickyNoteDialog(),
+    );
+    if (!mounted || draft == null) return;
+    final center = c.screenToWorld(
+      Offset(c.viewport.width / 2, c.viewport.height / 2),
+    );
+    final note = StickyNoteModel(
+      id: c.nextNoteId(),
+      text: draft.text,
+      color: draft.color,
+      fontSize: draft.fontSize,
+      size: draft.size,
+    );
+    c.addNote(note, center - Offset(note.size.width / 2, note.size.height / 2));
+  }
+
   // ───────────────────────────── build ─────────────────────────────
 
   @override
@@ -160,6 +181,11 @@ class _EditorPageState extends State<EditorPage> {
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
             onPressed: _openSettings,
+          ),
+          IconButton(
+            tooltip: 'New sticky note',
+            icon: const Icon(Icons.note_add_outlined),
+            onPressed: _createStickyNote,
           ),
         ],
       ),

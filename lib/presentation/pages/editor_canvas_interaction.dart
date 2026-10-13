@@ -26,6 +26,12 @@ extension _EditorCanvasInteraction on _EditorPageState {
 
     _primaryPointerDown = true;
     _pointerMoved = false;
+    final note = c.hitNote(world);
+    if (note != null) {
+      _draggedNoteId = note.id;
+      _drag = _Drag.note;
+      return;
+    }
     final name = c.hit(world);
     if (name != null) {
       if (_additive) {
@@ -51,6 +57,10 @@ extension _EditorCanvasInteraction on _EditorPageState {
     switch (_drag) {
       case _Drag.tables:
         c.moveSelected(event.delta / c.scale);
+      case _Drag.note:
+        if (_draggedNoteId != null) {
+          c.moveNote(_draggedNoteId!, event.delta / c.scale);
+        }
       case _Drag.pan:
         c.panBy(event.delta);
       case _Drag.marquee:
@@ -85,6 +95,7 @@ extension _EditorCanvasInteraction on _EditorPageState {
       }
     }
     _primaryPointerDown = false;
+    _draggedNoteId = null;
     _drag = _Drag.none;
   }
 

@@ -127,6 +127,35 @@ class ErdPainter extends CustomPainter {
       if (rect == null || !rect.overlaps(cull)) continue;
       _table(canvas, t, rect, fk);
     }
+    for (final note in c.notes) {
+      final position = c.notePos[note.id];
+      if (position == null || !(position & note.size).overlaps(cull)) continue;
+      _note(canvas, note, position);
+    }
+  }
+
+  void _note(Canvas canvas, StickyNoteModel note, Offset position) {
+    final rect = position & note.size;
+    final fill = Color(note.color);
+    canvas.drawRect(rect.shift(const Offset(0, 3)),
+        Paint()..color = Colors.black.withAlpha(35));
+    canvas.drawRect(rect, Paint()..color = fill);
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = Colors.black.withAlpha(45));
+    final text = ErdText.lay(
+      note.text,
+      TextStyle(
+        color: fill.computeLuminance() > 0.55 ? Colors.black87 : Colors.white,
+        fontSize: note.fontSize,
+        height: 1.25,
+      ),
+      rect.width - 24,
+    );
+    text.paint(canvas, position + const Offset(12, 12));
   }
 
   void _table(Canvas canvas, TableModel t, Rect r, Set<String> fk) {

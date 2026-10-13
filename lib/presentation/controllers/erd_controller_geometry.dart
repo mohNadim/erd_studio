@@ -8,9 +8,13 @@ mixin _ErdControllerGeometry on _ErdControllerBase {
       final size = sizes[entry.key];
       if (size == null) continue;
       final tableRect = entry.value & size;
-      result = result == null
-          ? tableRect
-          : result.expandToInclude(tableRect);
+      result = result == null ? tableRect : result.expandToInclude(tableRect);
+    }
+    for (final note in notes) {
+      final position = notePos[note.id];
+      if (position == null) continue;
+      final noteRect = position & note.size;
+      result = result == null ? noteRect : result.expandToInclude(noteRect);
     }
     return result ?? Rect.zero;
   }
@@ -26,6 +30,16 @@ mixin _ErdControllerGeometry on _ErdControllerBase {
     for (final table in schema.tables.reversed) {
       final rect = tableRect(table.name);
       if (rect != null && rect.contains(world)) return table.name;
+    }
+    return null;
+  }
+
+  StickyNoteModel? hitNote(Offset world) {
+    for (final note in notes.reversed) {
+      final position = notePos[note.id];
+      if (position != null && (position & note.size).contains(world)) {
+        return note;
+      }
     }
     return null;
   }
