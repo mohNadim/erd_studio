@@ -4,6 +4,257 @@ import '../canvas/erd_painter.dart';
 import '../../application/export/erd_export_service.dart';
 import '../app/theme_settings.dart';
 
+class ColumnDraftValues {
+  const ColumnDraftValues({
+    required this.name,
+    required this.type,
+    required this.pk,
+    required this.notNull,
+    required this.unique,
+    required this.autoInc,
+    required this.note,
+    required this.defaultValue,
+  });
+
+  final String name, type;
+  final bool pk, notNull, unique, autoInc;
+  final String note, defaultValue;
+}
+
+class ColumnEditorDialog extends StatefulWidget {
+  const ColumnEditorDialog({
+    super.key,
+    required this.initial,
+  });
+
+  final ColumnDraftValues initial;
+
+  @override
+  State<ColumnEditorDialog> createState() => _ColumnEditorDialogState();
+}
+
+class RenameTableDialog extends StatefulWidget {
+  const RenameTableDialog({super.key, required this.initial});
+  final String initial;
+
+  @override
+  State<RenameTableDialog> createState() => _RenameTableDialogState();
+}
+
+class _RenameTableDialogState extends State<RenameTableDialog> {
+  late final controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Rename table'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Rename'),
+          ),
+        ],
+      );
+}
+
+class _ColumnEditorDialogState extends State<ColumnEditorDialog> {
+  static const _columnTypes = [
+    'int',
+    'bigint',
+    'smallint',
+    'serial',
+    'bigserial',
+    'varchar',
+    'char',
+    'text',
+    'boolean',
+    'float',
+    'double',
+    'decimal',
+    'numeric',
+    'date',
+    'datetime',
+    'timestamp',
+    'timestamptz',
+    'uuid',
+    'json',
+    'jsonb',
+    'blob',
+    'enum',
+    'Custom',
+  ];
+  late final name = TextEditingController(text: widget.initial.name);
+  late final type = TextEditingController(text: widget.initial.type);
+  late final note = TextEditingController(text: widget.initial.note);
+  late final defaultValue =
+      TextEditingController(text: widget.initial.defaultValue);
+  late bool pk = widget.initial.pk;
+  late bool notNull = widget.initial.notNull;
+  late bool unique = widget.initial.unique;
+  late bool autoInc = widget.initial.autoInc;
+  late String selectedType = _columnTypes.contains(widget.initial.type)
+      ? widget.initial.type
+      : 'Custom';
+
+  @override
+  void dispose() {
+    name.dispose();
+    type.dispose();
+    note.dispose();
+    defaultValue.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        title: const Text('Edit field'),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: name,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedType,
+                  decoration: const InputDecoration(
+                    labelText: 'Type',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    for (final item in _columnTypes)
+                      DropdownMenuItem(value: item, child: Text(item)),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      selectedType = value;
+                      if (value != 'Custom') type.text = value;
+                    });
+                  },
+                ),
+                if (selectedType == 'Custom')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: TextField(
+                      controller: type,
+                      decoration: const InputDecoration(
+                        labelText: 'Custom type',
+                        hintText: 'varchar(120)',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: note,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Note',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: defaultValue,
+                  decoration: const InputDecoration(
+                    labelText: 'Default',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _flag('Primary key', pk, (v) => pk = v),
+                      _flag('Not null', notNull, (v) => notNull = v),
+                      _flag('Unique', unique, (v) => unique = v),
+                      _flag('Increment', autoInc, (v) => autoInc = v),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (name.text.trim().isEmpty || type.text.trim().isEmpty) return;
+              Navigator.pop(
+                context,
+                ColumnDraftValues(
+                  name: name.text.trim(),
+                  type: type.text.trim(),
+                  pk: pk,
+                  notNull: notNull,
+                  unique: unique,
+                  autoInc: autoInc,
+                  note: note.text.trim(),
+                  defaultValue: defaultValue.text.trim(),
+                ),
+              );
+            },
+            child: const Text('Apply'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      );
+
+  Widget _flag(String label, bool value, ValueChanged<bool> onChanged) =>
+      FilterChip(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        label: Text(label),
+        selected: value,
+        onSelected: (selected) => setState(() => onChanged(selected)),
+      );
+}
+
 // ───────────────────────────── table color ─────────────────────────────
 
 class ColorChoice {

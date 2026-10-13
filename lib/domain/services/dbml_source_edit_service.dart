@@ -79,3 +79,81 @@ String renameDbmlColumn(
       (m) =>
           '${m.group(1)}$tableName${m.group(1)}.${m.group(2)}$newName${m.group(2)}');
 }
+
+String updateDbmlColumn(
+  String src,
+  String tableName,
+  String oldName, {
+  required String newName,
+  required String type,
+  required bool pk,
+  required bool notNull,
+  required bool unique,
+  required bool autoInc,
+  String? note,
+  String? defaultValue,
+}) {
+  final lines = src.split('\n');
+  final tableHead = RegExp(
+      r'^\s*table\s+("[^"]+"|[\w\.]+)(?:\s+as\s+\w+)?(?:\s+\[[^\]]*\])?\s*\{',
+      caseSensitive: false);
+  final column = RegExp(
+    '^([ \\t]*)(["]?)${RegExp.escape(oldName)}\\2\\s+[^\\s\\[]+(?:\\([^\\]]*\\))?',
+  );
+  var inTable = false;
+  var depth = 0;
+  for (var i = 0; i < lines.length; i++) {
+    final head = tableHead.firstMatch(lines[i]);
+    if (head != null) {
+      var name = head.group(1)!;
+      if (name.startsWith('"')) name = name.substring(1, name.length - 1);
+      inTable = name == tableName;
+      depth = 1;
+      continue;
+    }
+    if (!inTable) continue;
+    if (lines[i].contains('{')) depth++;
+    if (lines[i].contains('}')) {
+      depth--;
+      if (depth <= 0) inTable = false;
+      continue;
+    }
+    if (depth != 1) continue;
+    final match = column.firstMatch(lines[i]);
+    if (match == null) continue;
+    final existingRef =
+        RegExp(r'\bref\s*:\s*([^,\]]+)', caseSensitive: false)
+            .firstMatch(lines[i])
+            ?.group(1)
+            ?.trim();
+    final options = <String>[
+      if (pk) 'pk',
+      if (notNull) 'not null',
+      if (unique) 'unique',
+      if (autoInc) 'increment',
+      if (note != null && note.trim().isNotEmpty)
+        'note: ${_dbmlValue(note)}',
+      if (defaultValue != null && defaultValue.trim().isNotEmpty)
+        'default: ${_dbmlValue(defaultValue)}',
+      if (existingRef != null && existingRef.isNotEmpty) 'ref: $existingRef',
+    ];
+    final suffix = options.isEmpty ? '' : ' [${options.join(', ')}]';
+    lines[i] =
+        '${match.group(1)}${match.group(2)}$newName${match.group(2)} $type$suffix';
+    return lines.join('\n');
+  }
+  return src;
+}
+
+String _dbmlValue(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return trimmed;
+  if (RegExp(r'''^["'].*["']$''').hasMatch(trimmed) ||
+      RegExp(r'^[\d.()-]+$').hasMatch(trimmed) ||
+      trimmed.toLowerCase() == 'true' ||
+      trimmed.toLowerCase() == 'false' ||
+      trimmed.toLowerCase() == 'null') {
+    return trimmed;
+  }
+  return "'${trimmed.replaceAll("'", "\\'")}'";
+}

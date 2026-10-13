@@ -268,37 +268,46 @@ extension _EditorCanvasInteraction on _EditorPageState {
     }
     if (oldName == null) return;
 
-    final controller = TextEditingController(text: oldName);
-    final renamed = await showDialog<String>(
+    final column = tableForColumn == null
+        ? null
+        : table.columns.firstWhere((item) => item.name == oldName);
+    final result = await showDialog<Object>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(tableForColumn == null ? 'Rename table' : 'Rename field'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name'),
-          onSubmitted: (value) => Navigator.pop(context, value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Rename'),
-          ),
-        ],
-      ),
+      builder: (context) => column == null
+          ? RenameTableDialog(initial: oldName!)
+          : ColumnEditorDialog(
+              initial: ColumnDraftValues(
+                name: column.name,
+                type: column.type,
+                pk: column.pk,
+                notNull: column.notNull,
+                unique: column.unique,
+                autoInc: column.autoInc,
+                note: column.note ?? '',
+                defaultValue: column.defaultValue ?? '',
+              ),
+            ),
     );
-    controller.dispose();
-    if (!mounted || renamed == null) return;
+    if (!mounted || result == null) return;
 
-    final newName = renamed.trim();
-    if (newName.isEmpty || newName == oldName) return;
+    final columnDraft = result is ColumnDraftValues ? result : null;
+    final newName = result is String ? result.trim() : columnDraft!.name;
+    if (newName.isEmpty) return;
     final updated = tableForColumn == null
         ? renameDbmlTable(text.text, oldName, newName)
-        : renameDbmlColumn(text.text, tableForColumn, oldName, newName);
+        : updateDbmlColumn(
+            text.text,
+            tableForColumn,
+            oldName,
+            newName: newName,
+            type: columnDraft!.type,
+            pk: columnDraft.pk,
+            notNull: columnDraft.notNull,
+            unique: columnDraft.unique,
+            autoInc: columnDraft.autoInc,
+            note: columnDraft.note,
+            defaultValue: columnDraft.defaultValue,
+          );
     text.value = TextEditingValue(
       text: updated,
       selection: TextSelection.collapsed(offset: updated.length),

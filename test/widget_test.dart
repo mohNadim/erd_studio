@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:dbml_erd_studio/core/constants/sample.dart';
 import 'package:dbml_erd_studio/presentation/app/erd_app.dart';
 import 'package:dbml_erd_studio/presentation/widgets/code_editor.dart';
+import 'package:dbml_erd_studio/domain/services/dbml_source_edit_service.dart';
 
 void main() {
   testWidgets('renders the ERD studio application',
@@ -130,5 +131,23 @@ void main() {
 
     expect(colors, {'#3B82F6'});
     expect(colors.length, 1);
+  });
+
+  test('updates a column definition without losing its reference', () {
+    final updated = updateDbmlColumn(
+      'Table orders {\n  user_id integer [ref: > users.id]\n}',
+      'orders',
+      'user_id',
+      newName: 'account_id',
+      type: 'bigint',
+      pk: false,
+      notNull: true,
+      unique: false,
+      autoInc: false,
+      note: '',
+      defaultValue: '',
+    );
+
+    expect(updated, contains('account_id bigint [not null, ref: > users.id]'));
   });
 }
